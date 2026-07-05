@@ -39,6 +39,14 @@ def _ollama_up():
     except Exception:
         return False
 
+def _port_serving():
+    """True if something already answers on our port (a prior instance still running)."""
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{PORT}/", timeout=1)
+        return True
+    except Exception:
+        return False
+
 def _ensure_ollama():
     """If Ollama is installed but not running, start it. If not installed, tell the user."""
     if _ollama_up():
@@ -71,11 +79,20 @@ def main():
     try:
         if not _ensure_ollama():
             log("  ! Ollama not detected on 127.0.0.1:11434 — install from https://ollama.com/download")
+        # if something already serves the port (a prior instance), don't fight it — the window
+        # will just use the running one.
+        if _port_serving():
+            log(f"  port {PORT} already serving — reusing the running instance, this one exits")
+            return
         import uvicorn
         from server import app
         threading.Thread(target=_open_browser, daemon=True).start()
         log(f"  serving on http://127.0.0.1:{PORT}/")
-        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+        try:
+            uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+        except OSError as e:
+            log(f"  port {PORT} in use ({e}) — another instance is serving; this one exits")
+            return
     except Exception:
         log("FATAL: engine failed to start:\n" + traceback.format_exc())
         raise
