@@ -1,0 +1,52 @@
+name: Build desktop binaries
+
+# Solves the "PyInstaller can't cross-compile" problem: builds a native binary on each OS in
+# parallel and uploads them as artifacts. Trigger manually (Actions tab) or on a version tag.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            out: ForensicEngine
+            asset: ForensicEngine-linux
+          - os: windows-latest
+            out: ForensicEngine.exe
+            asset: ForensicEngine-windows.exe
+          - os: macos-latest
+            out: ForensicEngine
+            asset: ForensicEngine-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r forensic_app/requirements-laptop.txt
+          pip install pyinstaller
+
+      - name: Build (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: bash forensic_app/desktop/build.sh
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: forensic_app\desktop\build.bat
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: desktop_dist/${{ matrix.out }}
+          if-no-files-found: error

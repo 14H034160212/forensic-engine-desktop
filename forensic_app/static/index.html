@@ -1,0 +1,695 @@
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forensic Engine · Forensic Engine</title>
+<style>
+  :root{
+    --ground:#EDF1F3;--panel:#FFFFFF;--text:#15212B;--muted:#5A6B78;--rule:#D5DEE2;
+    --accent:#0E6E78;--fail:#B3261E;--warn:#A9750F;--ok:#177A63;--haz:#6e1410;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--text);font-family:var(--sans);line-height:1.6;margin:0}
+  .wrap{max-width:960px;margin:0 auto;padding:clamp(20px,5vw,52px) clamp(16px,4vw,40px)}
+  a{color:var(--accent)}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(28px,5.2vw,46px);line-height:1.05;letter-spacing:-.015em;margin:0 0 14px}
+  h1 .sub{display:block;font-size:.40em;color:var(--muted);font-weight:500;margin-top:12px;line-height:1.45}
+  h2{font-family:var(--serif);font-weight:600;font-size:clamp(20px,3.4vw,28px);margin:0 0 4px}
+  .act{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+  section{margin:40px 0} p{margin:0 0 14px;font-size:15.5px}
+  hr{border:none;border-top:1px solid var(--rule);margin:0}
+  .live{background:#08313a;color:#dff1f0;border-radius:6px;padding:12px 16px;font-size:13px;line-height:1.5;margin:0 0 18px}
+  .live b{color:#9FE3DE}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0}
+  .chip{font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--rule);border-radius:20px;padding:4px 11px;color:var(--muted)}
+  .chip b{color:var(--text)}
+  .chip.on{border-color:var(--ok);color:var(--ok)} .chip.on b{color:var(--ok)}
+
+  .pipe{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
+  @media(max-width:620px){.pipe{grid-template-columns:1fr 1fr}}
+  .stage{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px;text-align:center}
+  .stage .n{font-family:var(--serif);font-size:30px;font-weight:600;line-height:1;color:var(--accent)}
+  .stage .l{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:7px;line-height:1.35}
+  .stage.flag .n{color:var(--fail)}
+
+  .verdict{background:#10333A;color:#E7EEF0;border-radius:6px;padding:18px 20px;margin:8px 0}
+  .verdict h4{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px;color:#9FE3DE}
+  .verdict p{color:#CDDBDE;font-size:14.5px;margin:0}
+
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  td .rk{font-family:var(--serif);font-size:18px;font-weight:600;color:var(--accent)}
+  .sev{font-family:var(--mono);font-size:10.5px;border-radius:3px;padding:1px 6px;color:#fff;white-space:nowrap}
+  .sev.Fatal{background:var(--haz)} .sev.Severe{background:var(--fail)}
+  .sev.Material{background:var(--warn)} .sev.Minor{background:var(--muted)}
+
+  .map{display:grid;gap:8px;margin-top:6px}
+  .map .row{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--fail);border-radius:0 5px 5px 0;padding:11px 14px}
+  .map .row b{font-size:14.5px} .map .row span{display:block;color:var(--muted);font-size:13px;margin-top:3px}
+
+  details{background:var(--panel);border:1px solid var(--rule);border-radius:6px;margin:7px 0;padding:0 14px}
+  details[open]{padding-bottom:10px}
+  summary{cursor:pointer;padding:11px 0;font-weight:600;font-size:14.5px;list-style:none;display:flex;align-items:center;gap:8px}
+  summary::-webkit-details-marker{display:none}
+  summary .id{font-family:var(--mono);font-size:11px;color:var(--accent)}
+  summary .badge{font-family:var(--mono);font-size:10px;border-radius:3px;padding:1px 6px;margin-left:auto;white-space:nowrap}
+  .badge.lb{background:#fde8e6;color:var(--haz)} .badge.pin{background:#0E6E78;color:#fff} .badge.new{background:#e7f1ef;color:var(--ok)}
+  details .body{font-size:14px;color:var(--text);padding-bottom:4px}
+  .claims{columns:2;column-gap:22px;font-size:13px;color:var(--muted)}
+  @media(max-width:620px){.claims{columns:1}}
+  .claims div{break-inside:avoid;margin:0 0 6px;padding-left:14px;text-indent:-14px}
+  footer{border-top:1px solid var(--rule);margin-top:40px;padding-top:16px;font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.7}
+  .loading{text-align:center;color:var(--muted);font-family:var(--mono);font-size:13px;padding:40px}
+  .picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 18px}
+  .picker label{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .picker select{font-family:var(--sans);font-size:14px;padding:7px 11px;border:1px solid var(--rule);border-radius:6px;background:#fff;color:var(--text)}
+  .picker .tab{font-family:var(--mono);font-size:12px;border:1px solid var(--rule);background:#fff;border-radius:20px;padding:5px 14px;cursor:pointer;color:var(--muted)}
+  .picker .tab.sel{border-color:var(--accent);background:var(--accent);color:#fff}
+
+  html,body{height:100%} body{display:flex;flex-direction:column}
+  .topbar{display:flex;align-items:center;gap:12px;padding:12px clamp(14px,3vw,26px);background:#0c2a30;color:#dff1f0;border-bottom:1px solid #08313a}
+  .topbar .brand{font-family:var(--serif);font-size:18px;font-weight:600}
+  .topbar .badge2{margin-left:auto;font-family:var(--mono);font-size:11px;color:#9FE3DE;border:1px solid #2c5a63;border-radius:20px;padding:3px 11px}
+  .shell{display:flex;flex:1;min-height:0}
+  .nav{width:210px;flex-shrink:0;background:#f6f9fa;border-right:1px solid var(--rule);padding:16px 10px}
+  .nav a{display:block;padding:10px 13px;border-radius:7px;text-decoration:none;color:var(--text);font-size:14.5px;font-weight:600;margin-bottom:3px;cursor:pointer}
+  .nav a:hover{background:#eaf1f2} .nav a.on{background:var(--accent);color:#fff}
+  .nav .grp{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 6px 13px}
+  .main{flex:1;overflow:auto}
+  .inner{max-width:940px;margin:0 auto;padding:clamp(18px,3.5vw,34px) clamp(16px,4vw,40px)}
+  .view{display:none} .view.on{display:block}
+  @media(max-width:760px){.nav{width:62px} .nav a{font-size:0;text-align:center;padding:12px 0} .nav a::first-letter{font-size:18px} .nav .grp{display:none}}
+
+  .drop{border:2px dashed var(--rule);border-radius:10px;padding:26px;text-align:center;background:var(--panel);transition:.15s;cursor:pointer}
+  .drop.hover{border-color:var(--accent);background:#f0f8f8}
+  .drop .big{font-family:var(--serif);font-size:18px;margin-bottom:4px} .drop .sm{font-size:13px;color:var(--muted)}
+  .files2{margin:10px 0 0;display:grid;gap:6px}
+  .file2{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:8px 12px;font-size:13px}
+  .file2 .nm{font-weight:600} .file2 .ch{font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto}
+  .file2 .x{cursor:pointer;color:var(--fail);font-weight:700;padding:0 4px}
+  .controls{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:14px 0}
+  .controls .f{flex:1;min-width:150px} .controls label{display:block;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px}
+  .controls input,.controls select{width:100%;font-family:var(--sans);font-size:14px;padding:8px 10px;border:1px solid var(--rule);border-radius:6px;background:#fff;color:var(--text)}
+  .btn{font-family:var(--sans);font-size:15px;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:11px 22px;cursor:pointer}
+  .btn:disabled{opacity:.55;cursor:default} .btn.ghost{background:#fff;color:var(--accent);border:1px solid var(--accent)}
+  textarea.paste{width:100%;min-height:120px;font-family:var(--mono);font-size:12px;line-height:1.5;border:1px solid var(--rule);border-radius:8px;padding:10px;resize:vertical;margin-top:10px;color:var(--text)}
+
+  .log{background:#08313a;color:#dff1f0;border-radius:8px;padding:14px 16px;margin:16px 0;font-family:var(--mono);font-size:12.5px;line-height:1.7;display:none}
+  .log.on{display:block} .log .ln{opacity:.5} .log .ln.cur{opacity:1;color:#9FE3DE} .log .ln.cur::before{content:"▸ "} .log .ln.done::before{content:"✓ ";color:#7fd6a8} .log .t{float:right;opacity:.5}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid #2c5a63;border-top-color:#9FE3DE;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-1px;margin-left:6px} @keyframes sp{to{transform:rotate(360deg)}}
+  .exportbar{display:flex;gap:10px;margin:18px 0;align-items:center}
+  .hist{display:grid;gap:8px} .hrow{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;cursor:pointer}
+  .hrow:hover{border-color:var(--accent)} .hrow .hl{font-weight:600} .hrow .hm{font-family:var(--mono);font-size:11px;color:var(--muted)} .hrow .hs{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
+  .hrow .del{color:var(--fail);font-weight:700;cursor:pointer;padding:0 6px}
+  .conf{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--haz);border-radius:0 6px 6px 0;padding:13px 16px;margin:8px 0}
+  .conf .top{font-weight:600;font-size:15px} .conf .d{font-size:13.5px;margin-top:6px} .conf .d b{color:var(--accent)} .conf .why{font-style:italic;color:var(--muted);font-size:13px;margin-top:6px}
+  .empty{color:var(--muted);font-size:14px;padding:24px;text-align:center}
+  .gpu-line{display:inline-block;font-family:var(--mono);font-size:11px;border:1px solid var(--rule);border-radius:20px;padding:3px 11px;color:var(--muted);margin:0 0 14px}
+</style>
+<div class="topbar">
+  <span class="brand">Forensic Engine · Forensic Engine</span>
+  <span class="badge2" id="gpu-badge" style="margin-left:auto;display:none" title="Live GPU load on the shared server — updates every few seconds">GPU …</span>
+  <span class="badge2" style="margin-left:8px">🔒 local · zero egress · blind</span>
+</div>
+<div class="shell">
+  <nav class="nav">
+    <div class="grp">Analyse</div>
+    <a id="nav-new" class="on" onclick="showView('new')">New analysis</a>
+    <a id="nav-excav" onclick="showView('excav')">Reasoning excavation</a>
+    <a id="nav-cross" onclick="showView('cross')">Cross-document</a>
+    <div class="grp">Library</div>
+    <a id="nav-hist" onclick="showView('hist');loadHistory()">History</a>
+    <div class="grp">Run it locally</div>
+    <a href="/download" target="_blank">⬇ Get the app</a>
+    <a href="/laptop" target="_blank">Laptop feasibility</a>
+    <div id="verbadge" style="margin-top:auto;padding-top:14px;font-family:var(--mono);font-size:10.5px;color:var(--muted)"></div>
+  </nav>
+  <div class="main"><div class="inner">
+
+    <!-- NEW ANALYSIS -->
+    <div class="view on" id="view-new">
+      <p class="eyebrow">Blind 2-pass prosecution · unit economics</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Analyse a pitch deck</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 16px">Upload a PDF or Word deck (or paste the text). The engine runs the full blind prosecution on your own hardware — nothing leaves the building.</p>
+      <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+        <div class="big">Drop a deck here, or click to choose</div>
+        <div class="sm">PDF · DOCX · TXT — single file</div>
+        <input type="file" id="file" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="onPick(this.files,false)">
+      </div>
+      <textarea class="paste" id="paste" placeholder="…or paste deck text here"></textarea>
+      <div id="samples" style="margin-top:10px"></div>
+      <div class="files2" id="files-new"></div>
+      <div class="controls">
+        <div class="f"><label>Label</label><input id="label" placeholder="e.g. QuickBite"></div>
+        <div class="f"><label>Document type</label><select id="profile"></select></div>
+        <div class="f"><label>Model (local)</label><select id="model"></select></div>
+        <div><button class="btn" id="runbtn" onclick="runSingle()">Run analysis ▸</button></div>
+      </div>
+      <div class="log" id="log"></div>
+      <div class="exportbar" id="exportbar" style="display:none">
+        <a class="btn ghost" id="exportlink" href="#" target="_blank">⬇ Export PDF</a>
+        <span class="hm" id="savedmsg" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div class="chips" id="chips" style="margin:6px 0 14px"></div>
+      <div id="content"></div>
+    </div>
+
+    <!-- CROSS-DOCUMENT -->
+    <div class="view" id="view-cross">
+      <p class="eyebrow">Cross-document conflict detection</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Do these documents contradict each other?</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 10px">Upload two or more documents. The engine finds claims that cannot both be true — pure internal logic, so it works on confidential material with nothing to look up.</p>
+      <span class="gpu-line" id="gpu-cross" style="display:none">GPU …</span>
+      <div class="drop" id="dropc" onclick="document.getElementById('filec').click()">
+        <div class="big">Drop documents here, or click to choose</div>
+        <div class="sm">PDF · DOCX · TXT — two or more</div>
+        <input type="file" id="filec" accept=".pdf,.docx,.txt,.md" multiple style="display:none" onchange="onPick(this.files,true)">
+      </div>
+      <div class="files2" id="files-cross"></div>
+      <div class="controls">
+        <div class="f"><label>Model (local)</label><select id="modelc"></select></div>
+        <div><button class="btn" id="crossbtn" onclick="runCross()">Find conflicts ▸</button></div>
+      </div>
+      <div id="cross-out"></div>
+    </div>
+
+    <!-- REASONING EXCAVATION -->
+    <div class="view" id="view-excav">
+      <p class="eyebrow">Reasoning excavation · reader intent → atoms → bonds</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Excavate the reasoning inside a document</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 10px">Three passes: what a reader takes away and what the author intends (Step 0), a categorised register of every reasoning atom (Steps 1–2), and the bonds between them — dependencies and contradictions (Step 3). Blind, local, zero egress.</p>
+      <span class="gpu-line" id="gpu-excav" style="display:none">GPU …</span>
+      <div class="drop" id="dropx" onclick="document.getElementById('filex').click()">
+        <div class="big">Drop a document here, or click to choose</div>
+        <div class="sm">PDF · DOCX · TXT — single file</div>
+        <input type="file" id="filex" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="onPick(this.files,false,'x')">
+      </div>
+      <textarea class="paste" id="pastex" placeholder="…or paste document text here"></textarea>
+      <div id="samplesx" style="margin-top:10px"></div>
+      <div class="files2" id="files-x"></div>
+      <div class="controls">
+        <div class="f"><label>Label</label><input id="labelx" placeholder="e.g. a pitch deck"></div>
+        <div class="f"><label>Depth</label><select id="depthx"><option value="fast">Fast (grouped)</option><option value="deep">Deep (per-category, ~16 passes)</option></select></div>
+        <div class="f"><label>Model (local)</label><select id="modelx"></select></div>
+        <div><button class="btn" id="excavbtn" onclick="runExcav()">Excavate ▸</button></div>
+      </div>
+      <div class="log" id="logx"></div>
+      <div class="exportbar" id="exportbarx" style="display:none"><a class="btn ghost" id="exportlinkx" href="#" target="_blank">⬇ Export PDF</a><span class="hm" id="savedmsgx" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span></div>
+      <div id="excav-out"></div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="view" id="view-hist">
+      <p class="eyebrow">Run history</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 14px">Saved analyses</h1>
+      <div class="hist" id="histlist"></div>
+    </div>
+
+  </div></div>
+</div>
+<script>
+function el(tag, cls, html){var e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e;}
+function esc(s){return (s==null?"":String(s)).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
+
+function render(D){
+  var I = D.integration||{}, S = D.stats||{};
+  var isPitch = (D.profile||"pitch")==="pitch";
+  var L = {
+    integHead: isPitch?"Why the defence case collapses":"How well the case holds up",
+    verdict:   isPitch?"Blind predictive failure judgement (document only, no hindsight)":"Overall assessment (from the document alone)",
+    p1title:   isPitch?"Pass 1 — surface prosecution":"Pass 1 — surface review",
+    p1act:     isPitch?"Every issue in the visible deck":"Every issue in the visible document",
+    claims:    isPitch?" hidden assumptions the deck needs you to accept":" hidden assumptions the document needs you to accept"
+  };
+  // chips
+  var chips=document.getElementById("chips"); chips.innerHTML="";
+  [["model",D.model,1],["blind","yes",1],["zero egress","local",1],
+   ["deck",D.label,0],["arithmetic red flags",(S.econ_red_flags!=null?S.econ_red_flags:"—"),0],
+   ["runtime",(S.seconds!=null?S.seconds+"s":"—"),0]].forEach(function(c){
+    var ch=el("span","chip"+(c[2]?" on":""),"<b>"+esc(c[1])+"</b> "+c[0]); chips.appendChild(ch);
+  });
+
+  var C=document.getElementById("content"); C.innerHTML="";
+
+  // pipeline
+  var s=el("section"); s.appendChild(el("span","act","The pipeline, end to end"));
+  s.appendChild(el("h2","","Four stages, no human in the loop"));
+  var pipe=el("div","pipe");
+  [[S.pass1_count,"Pass 1<br>surface charges"],
+   [S.level2_count,"excavated<br>Level-2 claims"],
+   [S.pass2_count,"Pass 2<br>NEW charges"],
+   [S.pass2_pincers,"structural<br>contradictions",1]].forEach(function(p){
+    var st=el("div","stage"+(p[2]?" flag":"")); st.appendChild(el("div","n",(p[0]!=null?p[0]:"—")));
+    st.appendChild(el("div","l",p[1])); pipe.appendChild(st);
+  });
+  s.appendChild(pipe);
+  C.appendChild(s);
+
+  // executive summary + predictive judgement
+  if(I.executive_summary||I.predictive_failure_judgement){
+    var s2=el("section"); s2.appendChild(el("span","act","The integrated case"));
+    s2.appendChild(el("h2","",L.integHead));
+    if(I.executive_summary) s2.appendChild(el("p","",esc(I.executive_summary)));
+    if(I.predictive_failure_judgement){
+      var v=el("div","verdict"); v.appendChild(el("h4","",L.verdict));
+      v.appendChild(el("p","",esc(I.predictive_failure_judgement))); s2.appendChild(v);
+    }
+    C.appendChild(s2);
+  }
+
+  // arithmetic / unit economics
+  var econ=D.economics||{}, metrics=econ.metrics||[];
+  if(metrics.length){
+    var se=el("section"); se.appendChild(el("span","act","The arithmetic — from the deck's own numbers"));
+    se.appendChild(el("h2","","Contradictions you can re-check on a napkin"));
+    se.appendChild(el("p","","Every figure below is <b>extracted from the deck and the ratio computed deterministically</b> — not generated by the model. The internal ones need no outside data at all; they are the deck contradicting itself."));
+    var t=el("table"); t.innerHTML="<tr><th>Metric</th><th>Value</th><th>Derivation</th></tr>";
+    metrics.forEach(function(m){
+      var tr=el("tr");
+      var badge = m.danger ? " <span class='sev Fatal'>red flag</span>" : "";
+      var ext = m.external ? " <span class='chip' style='padding:1px 7px'>uses benchmark</span>" : "";
+      tr.innerHTML="<td><b>"+esc(m.metric)+"</b>"+badge+ext+(m.note?"<br><span style='color:var(--muted);font-size:12.5px'>"+esc(m.note)+"</span>":"")+"</td>"+
+        "<td style='font-family:var(--mono);font-weight:700;white-space:nowrap'>"+esc(m.value)+"</td>"+
+        "<td style='font-family:var(--mono);font-size:12px;color:var(--muted)'>"+esc(m.derivation)+"</td>";
+      t.appendChild(tr);
+    });
+    se.appendChild(t); C.appendChild(se);
+  }
+
+  // load-bearing collapse map
+  var map=I.load_bearing_collapse_map||[];
+  if(map.length){
+    var s3=el("section"); s3.appendChild(el("span","act","Load-bearing collapse map"));
+    s3.appendChild(el("h2","","Pull one support, the structure falls"));
+    var m=el("div","map");
+    map.forEach(function(r){ m.appendChild(el("div","row","<b>"+esc(r.issue)+"</b><span>If it falls → "+esc(r.if_it_falls)+"</span>")); });
+    s3.appendChild(m); C.appendChild(s3);
+  }
+
+  // ranked register
+  var reg=I.ranked_register||[];
+  if(reg.length){
+    var s4=el("section"); s4.appendChild(el("span","act","Ranked prosecution register"));
+    s4.appendChild(el("h2","","Ordered by power to collapse the thesis"));
+    var t=el("table"); t.innerHTML="<tr><th>#</th><th>Charge</th><th>Severity</th><th>Why it matters</th></tr>";
+    reg.forEach(function(r){
+      var tr=el("tr");
+      tr.innerHTML="<td><span class='rk'>"+esc(r.rank)+"</span></td><td><b>"+esc(r.title)+"</b></td>"+
+        "<td><span class='sev "+esc(r.severity)+"'>"+esc(r.severity)+"</span></td><td>"+esc(r.why_it_matters)+"</td>";
+      t.appendChild(tr);
+    });
+    s4.appendChild(t); C.appendChild(s4);
+  }
+
+  // detail findings
+  function findingBlock(title, act, list){
+    var s=el("section"); s.appendChild(el("span","act",act)); s.appendChild(el("h2","",title));
+    list.forEach(function(f){
+      var d=el("details"); var sum=el("summary");
+      sum.innerHTML="<span class='id'>"+esc(f.id)+"</span> "+esc(f.name);
+      if(f.type==="pincer") sum.appendChild(el("span","badge pin","pincer"));
+      else if(f.type==="new") sum.appendChild(el("span","badge new","new"));
+      if(f.load_bearing) sum.appendChild(el("span","badge lb","load-bearing"));
+      d.appendChild(sum);
+      d.appendChild(el("div","body","<span class='sev "+esc(f.severity)+"'>"+esc(f.severity)+"</span>&nbsp; "+esc(f.charge)));
+      s.appendChild(d);
+    });
+    C.appendChild(s);
+  }
+  if((D.pass2||[]).length) findingBlock("Pass 2 — what the excavation added","Deeper charges · new + pincers",D.pass2);
+  if((D.pass1||[]).length) findingBlock(L.p1title,L.p1act,D.pass1);
+
+  // level-2 claims
+  var cl=D.level2_claims||[];
+  if(cl.length){
+    var s5=el("section"); s5.appendChild(el("span","act","The excavation layer"));
+    s5.appendChild(el("h2","","The "+cl.length+L.claims));
+    s5.appendChild(el("p","","Each is a statement the deck never prints but silently requires — the raw material Pass 2 interrogates."));
+    var box=el("div","claims"); cl.forEach(function(c){ box.appendChild(el("div","","• "+esc(c))); });
+    s5.appendChild(box); C.appendChild(s5);
+  }
+}
+
+
+// ---------- state + nav ----------
+var ST={ newDocs:[], crossDocs:[], xDocs:[] };
+function showView(v){
+  ["new","excav","cross","hist"].forEach(function(x){
+    document.getElementById("view-"+x).classList.toggle("on",x===v);
+    document.getElementById("nav-"+x).classList.toggle("on",x===v);
+  });
+}
+// inject the ngrok skip-warning header on every request so API/stream calls never hit the interstitial
+(function(){ var _f=window.fetch; window.fetch=function(u,o){ o=o||{}; o.headers=Object.assign({"ngrok-skip-browser-warning":"true"}, o.headers||{}); return _f.call(window,u,o); }; })();
+function api(p,opt){ return fetch(p,opt).then(function(r){return r.json();}); }
+
+// ---------- models ----------
+var MODEL_LABELS={
+  "qwen2.5-coder:7b":"Qwen2.5 7B — fast (~30–60s)",
+  "qwen2.5-coder:32b":"Qwen2.5 32B — balanced (~2–3 min)",
+  "L3370B:latest":"Llama 3.3 70B — most accurate (~4–6 min)",
+  "deepseek-r1:32b":"DeepSeek-R1 32B — reasoning (~3–5 min)"
+};
+api("/api/models").then(function(d){
+  ["model","modelc","modelx"].forEach(function(id){
+    var s=document.getElementById(id); if(!s) return;
+    d.models.forEach(function(m){ var o=document.createElement("option"); o.value=m; o.textContent=MODEL_LABELS[m]||m; s.appendChild(o); });
+  });
+});
+// ---------- document-type profiles (calibrates the analysis framing) ----------
+api("/api/profiles").then(function(d){
+  var s=document.getElementById("profile"); if(!s) return;
+  (d.profiles||[]).forEach(function(p){ var o=document.createElement("option"); o.value=p.id; o.textContent=p.label; s.appendChild(o); });
+}).catch(function(){});
+
+// ---------- Ollama onboarding (native app: tell the user if the local model host is down) ----------
+api("/api/ollama").then(function(o){
+  if(!o) return;
+  var msg="", col="#B3261E";
+  if(!o.running){ msg="⚠ Ollama not running — analysis needs it. Install/start from <a href='https://ollama.com/download' target='_blank' style='color:#9FE3DE'>ollama.com/download</a>, then reload."; }
+  else if(!o.has_wanted){ msg="⚠ Ollama is running but no model is pulled — run <code style='background:#0b2a30;padding:1px 5px;border-radius:3px'>ollama pull llama3.2:3b</code>."; col="#A9750F"; }
+  if(!msg) return;
+  var bar=document.createElement("div");
+  bar.style.cssText="position:sticky;top:0;z-index:70;background:#10333A;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;display:flex;gap:10px;align-items:center;justify-content:center;border-bottom:2px solid "+col;
+  bar.innerHTML=msg+" <span style='cursor:pointer;opacity:.6' onclick='this.parentNode.remove()'>✕</span>";
+  document.body.insertBefore(bar, document.body.firstChild);
+}).catch(function(){});
+
+// ---------- version badge + update check ----------
+api("/api/version").then(function(v){
+  var b=document.getElementById("verbadge");
+  if(b && v && v.version) b.textContent="v"+v.version;
+}).catch(function(){});
+api("/api/update-check").then(function(u){
+  if(u && u.available){ var b=document.getElementById("verbadge");
+    if(b) b.innerHTML="v"+esc(u.current)+" · <span style='color:#9FE3DE'>update ⬆</span>"; }
+  if(!u || !u.available) return;
+  var bar=document.createElement("div");
+  bar.style.cssText="position:sticky;top:0;z-index:60;background:#10333A;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;display:flex;gap:10px;align-items:center;justify-content:center;border-bottom:1px solid #0b2a30";
+  bar.innerHTML="⬆ Update available — <b style='color:#9FE3DE'>"+esc(u.latest)+"</b> (you have "+esc(u.current)+"). Run <code style='background:#0b2a30;padding:1px 6px;border-radius:3px'>./update.sh</code> or <code style='background:#0b2a30;padding:1px 6px;border-radius:3px'>update.bat</code>, then restart. <span style='cursor:pointer;opacity:.6' onclick='this.parentNode.remove()'>✕</span>";
+  document.body.insertBefore(bar, document.body.firstChild);
+}).catch(function(){});
+
+// ---------- live GPU load (shared server; real utilisation from nvidia-smi) ----------
+var LAST_GPU=null;
+function paintGpu(el,g,dark){
+  if(!el) return;
+  var color = g.level==="light"?(dark?"#7fd6a8":"#177A63"):(g.level==="moderate"?(dark?"#ffcf7a":"#A9750F"):(dark?"#f2a2a2":"#B3261E"));
+  el.style.display=(el.id==="gpu-badge"?"":"inline-block"); el.style.color=color; el.style.borderColor=color;
+  el.textContent="GPU "+g.free+"/"+g.gpus+" free · "+g.status+" · "+g.avg_util+"% util";
+}
+function refreshGpu(){
+  api("/api/gpu").then(function(g){
+    var ids=["gpu-badge","gpu-excav","gpu-cross"];
+    if(g.error || g.gpus==null){ ids.forEach(function(id){var e=document.getElementById(id);if(e)e.style.display="none";}); return; }
+    LAST_GPU=g;
+    paintGpu(document.getElementById("gpu-badge"),g,true);
+    paintGpu(document.getElementById("gpu-excav"),g,false);
+    paintGpu(document.getElementById("gpu-cross"),g,false);
+  }).catch(function(){});
+}
+refreshGpu(); setInterval(refreshGpu, 6000);
+
+// ---------- sample decks ----------
+api("/api/samples").then(function(d){
+  var box=document.getElementById("samples"); if(!d.samples||!d.samples.length) return;
+  var lab=document.createElement("span"); lab.style.cssText="font-family:var(--mono);font-size:11px;color:var(--muted);margin-right:8px"; lab.textContent="Try a sample:";
+  box.appendChild(lab);
+  var boxx=document.getElementById("samplesx");
+  function fill(container, which){
+    if(!container) return;
+    if(which==="x"){ var lab=document.createElement("span"); lab.style.cssText="font-family:var(--mono);font-size:11px;color:var(--muted);margin-right:8px"; lab.textContent="Try a sample:"; container.appendChild(lab); }
+    d.samples.forEach(function(s){
+      var b=document.createElement("button"); b.className="btn ghost"; b.style.cssText="font-size:13px;padding:6px 13px;margin-right:8px";
+      b.textContent=s.label; b.title=s.desc; b.onclick=function(){ loadSample(s,which); };
+      container.appendChild(b);
+    });
+  }
+  fill(box,"new"); fill(boxx,"x");
+});
+function loadSample(s, which){
+  which=which||"new";
+  if(which==="x"){ ST.xDocs=[{filename:s.label+" (sample)",text:s.text,chars:s.text.length}]; document.getElementById("labelx").value=s.label; document.getElementById("pastex").value=""; renderFiles(false,"x"); }
+  else { ST.newDocs=[{filename:s.label+" (sample)",text:s.text,chars:s.text.length}]; document.getElementById("label").value=s.label; document.getElementById("paste").value=""; renderFiles(false,"new"); }
+}
+
+// ---------- upload ----------
+function dndSetup(dropId, isCross, which){
+  var z=document.getElementById(dropId); if(!z) return;
+  ["dragenter","dragover"].forEach(function(e){ z.addEventListener(e,function(ev){ev.preventDefault();z.classList.add("hover");}); });
+  ["dragleave","drop"].forEach(function(e){ z.addEventListener(e,function(ev){ev.preventDefault();z.classList.remove("hover");}); });
+  z.addEventListener("drop",function(ev){ onPick(ev.dataTransfer.files,isCross,which); });
+}
+dndSetup("drop",false,"new"); dndSetup("dropc",true,"cross"); dndSetup("dropx",false,"x");
+
+function onPick(fileList, isCross, which){
+  which = which || (isCross?"cross":"new");
+  if(!fileList || !fileList.length) return;
+  var fd=new FormData();
+  Array.prototype.forEach.call(fileList,function(f){ fd.append("files",f); });
+  var tgt = which==="cross"?"files-cross":which==="x"?"files-x":"files-new";
+  document.getElementById(tgt).innerHTML="<div class='hm' style='font-family:monospace;font-size:11px;color:var(--muted)'>parsing…</div>";
+  api("/api/parse",{method:"POST",body:fd}).then(function(d){
+    var docs=d.documents||[];
+    if(which==="cross"){ docs.forEach(function(x){ ST.crossDocs.push(x); }); }
+    else if(which==="x"){ ST.xDocs=docs.slice(0,1); if(docs[0]&&!document.getElementById("labelx").value){ document.getElementById("labelx").value=(docs[0].filename||"").replace(/\.[^.]+$/,""); } }
+    else { ST.newDocs=docs.slice(0,1); if(docs[0]&&!document.getElementById("label").value){ document.getElementById("label").value=(docs[0].filename||"").replace(/\.[^.]+$/,""); } }
+    renderFiles(isCross, which);
+  });
+}
+function renderFiles(isCross, which){
+  which = which || (isCross?"cross":"new");
+  var arr = which==="cross"?ST.crossDocs:which==="x"?ST.xDocs:ST.newDocs;
+  var tgt = which==="cross"?"files-cross":which==="x"?"files-x":"files-new";
+  var box=document.getElementById(tgt); box.innerHTML="";
+  arr.forEach(function(x,i){
+    var d=document.createElement("div"); d.className="file2";
+    d.innerHTML="<span class='nm'>"+esc(x.filename||("Doc "+(i+1)))+"</span>"+(x.error?"<span class='ch' style='color:var(--fail)'>"+esc(x.error)+"</span>":"<span class='ch'>"+x.chars+" chars</span>")+"<span class='x'>✕</span>";
+    d.querySelector(".x").onclick=function(){ arr.splice(i,1); renderFiles(isCross, which); };
+    box.appendChild(d);
+  });
+}
+
+// ---------- streaming run ----------
+var logEl=document.getElementById("log");
+function logStage(key,msg,done,t){
+  var id="ln-"+key, e=document.getElementById(id);
+  if(!e){ e=document.createElement("div"); e.id=id; e.className="ln cur"; logEl.appendChild(e); }
+  Array.prototype.forEach.call(logEl.querySelectorAll(".ln.cur"),function(x){ if(x!==e){x.classList.remove("cur");x.classList.add("done");} });
+  e.className="ln "+(done?"done":"cur");
+  e.innerHTML=esc(msg)+(done&&t!=null?"<span class='t'>"+t+"s</span>":(done?"":"<span class='spin'></span><span class='live' style='float:right;opacity:.6;font-family:var(--mono)'></span>"));
+}
+function runSingle(){
+  var deck=(ST.newDocs[0]&&ST.newDocs[0].text)||document.getElementById("paste").value||"";
+  if(!deck.trim()){ alert("Upload a deck or paste text first."); return; }
+  var model=document.getElementById("model").value, label=document.getElementById("label").value||"Untitled deck";
+  var profile=(document.getElementById("profile")||{}).value||"pitch";
+  var btn=document.getElementById("runbtn"); btn.disabled=true; btn.textContent="Running…";
+  document.getElementById("content").innerHTML=""; document.getElementById("chips").innerHTML="";
+  document.getElementById("exportbar").style.display="none";
+  logEl.innerHTML=etaHint(model); logEl.className="log on";
+  fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deck:deck,model:model,label:label,profile:profile})})
+   .then(function(r){
+     var rd=r.body.getReader(), dec=new TextDecoder(), buf="";
+     function pump(){ return rd.read().then(function(res){
+       if(res.done){ finish(); return; }
+       buf+=dec.decode(res.value,{stream:true}); var parts=buf.split("\n\n"); buf=parts.pop();
+       parts.forEach(function(p){ p=p.trim(); if(!p.indexOf("data:")===0&&p.indexOf("data:")!==0)return; if(p.indexOf("data:")!==0)return; var o; try{o=JSON.parse(p.slice(5).trim());}catch(e){return;} handle(o); });
+       return pump();
+     }); }
+     return pump();
+   }).catch(function(e){ logStage("err","Error: "+e.message,true); finish(); });
+  function handle(o){
+    if(o.error){ logStage("err","⚠ "+o.error,true); return; }
+    if(o.stage==="result"){ render(o.result); showExport(o.result); return; }
+    if(o.stage){ var done=/done$/.test(o.stage)||o.stage==="start"; logStage(o.stage.replace(/done$/,""),o.msg,done,o.t); }
+  }
+  function finish(){ finalizeLog(logEl); btn.disabled=false; btn.textContent="Run analysis ▸"; }
+}
+function showExport(result){
+  if(!result.id) return;
+  document.getElementById("exportlink").href="/api/export/"+result.id;
+  document.getElementById("savedmsg").textContent="saved to history · "+result.id;
+  document.getElementById("exportbar").style.display="flex";
+}
+
+// ---------- reasoning excavation ----------
+var logExEl=document.getElementById("logx");
+function logStageX(key,msg,done,t){
+  var id="lx-"+key, e=document.getElementById(id);
+  if(!e){ e=document.createElement("div"); e.id=id; e.className="ln cur"; logExEl.appendChild(e); }
+  Array.prototype.forEach.call(logExEl.querySelectorAll(".ln.cur"),function(x){ if(x!==e){x.classList.remove("cur");x.classList.add("done");} });
+  e.className="ln "+(done?"done":"cur");
+  e.innerHTML=esc(msg)+(done&&t!=null?"<span class='t'>"+t+"s</span>":(done?"":"<span class='spin'></span><span class='live' style='float:right;opacity:.6;font-family:var(--mono)'></span>"));
+}
+function runExcav(){
+  var text=(ST.xDocs[0]&&ST.xDocs[0].text)||document.getElementById("pastex").value||"";
+  if(!text.trim()){ alert("Upload a document or paste text first."); return; }
+  var model=document.getElementById("modelx").value, label=document.getElementById("labelx").value||"Untitled document";
+  var depth=document.getElementById("depthx").value;
+  var btn=document.getElementById("excavbtn"); btn.disabled=true; btn.textContent="Excavating…";
+  document.getElementById("excav-out").innerHTML=""; document.getElementById("exportbarx").style.display="none";
+  logExEl.innerHTML=etaHint(model); logExEl.className="log on";
+  fetch("/api/excavate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deck:text,model:model,label:label,depth:depth})})
+   .then(function(r){
+     var rd=r.body.getReader(), dec=new TextDecoder(), buf="";
+     function pump(){ return rd.read().then(function(res){
+       if(res.done){ finish(); return; }
+       buf+=dec.decode(res.value,{stream:true}); var parts=buf.split("\n\n"); buf=parts.pop();
+       parts.forEach(function(p){ p=p.trim(); if(p.indexOf("data:")!==0)return; var o; try{o=JSON.parse(p.slice(5).trim());}catch(e){return;} handle(o); });
+       return pump();
+     }); }
+     return pump();
+   }).catch(function(e){ logStageX("err","Error: "+e.message,true); finish(); });
+  function handle(o){
+    if(o.error){ logStageX("err","⚠ "+o.error,true); return; }
+    if(o.stage==="result"){ renderExcavation(o.result); if(o.result.id){ document.getElementById("exportlinkx").href="/api/export/"+o.result.id; document.getElementById("savedmsgx").textContent="saved · "+o.result.id; document.getElementById("exportbarx").style.display="flex"; } return; }
+    if(o.stage){ var done=/done$/.test(o.stage)||o.stage==="start"; logStageX(o.stage.replace(/done$/,""),o.msg,done,o.t); }
+  }
+  function finish(){ finalizeLog(logExEl); btn.disabled=false; btn.textContent="Excavate ▸"; }
+}
+function renderExcavation(D){
+  var out=document.getElementById("excav-out"); out.innerHTML="";
+  var S=D.stats||{}, amap={}; (D.atoms||[]).forEach(function(a){ amap[a.id]=a; });
+  // chips
+  var chips=el("div","chips"); chips.style.margin="4px 0 16px";
+  [["model",D.model,1],["reader takeaways",S.reader_takeaways,0],["author intent",S.author_intent,0],
+   ["atoms",S.atoms,0],["categories",S.categories,0],["bonds",S.bonds,0],["contradictions",S.contradictions,0],
+   ["runtime",(S.seconds!=null?S.seconds+"s":"—"),0]].forEach(function(c){
+    chips.appendChild(el("span","chip"+(c[2]?" on":""),"<b>"+esc(c[1])+"</b> "+c[0]));
+  });
+  out.appendChild(chips);
+
+  // Step 0
+  var s0=D.step0||{};
+  var g=el("div"); g.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px";
+  function col(title,items){ var c=el("div","card"); c.style.padding="14px 16px"; c.appendChild(el("div","k",title)); var ul=el("ul"); ul.style.cssText="margin:8px 0 0;padding-left:18px;font-size:13.5px"; (items||[]).forEach(function(t){ var li=document.createElement("li"); li.style.margin="0 0 5px"; li.textContent=t; ul.appendChild(li); }); c.appendChild(ul); return c; }
+  g.appendChild(col("Step 0 · what a reader takes away",s0.reader_takeaways));
+  g.appendChild(col("Step 0 · inferred author intent",s0.author_intent));
+  var sec0=el("section"); sec0.appendChild(el("span","act","Step 0 — the persuasive surface")); sec0.appendChild(el("h2","","Before any analysis: reader + author")); sec0.appendChild(g); out.appendChild(sec0);
+
+  // contradictions (Step 3 payoff)
+  var cs=D.contradictions||[];
+  var sec3=el("section"); sec3.appendChild(el("span","act","Step 3 — bond mapping")); sec3.appendChild(el("h2","","Contradictions the reasoning graph surfaces"));
+  if(D.verified && D.verification){ var vf=D.verification;
+    sec3.appendChild(el("p","","Logic verifier (NLI): "+vf.confirmed+" verified · "+vf.rejected+" rejected · "+vf.duplicates+" duplicates.")).style.cssText="color:var(--muted);font-size:13px;margin:0 0 8px"; }
+  if(!cs.length){ sec3.appendChild(el("div","empty","No contradiction bonds found.")); }
+  var VB={real:["✓ verified","#177A63"],duplicate:["♻ duplicate","#A9750F"],weak:["✗ unverified","#B3261E"]};
+  cs.forEach(function(b){
+    var box=el("div","conf");
+    var vb=VB[b.verdict]; var badge=vb?" <span style='font-family:var(--mono);font-size:10.5px;color:"+vb[1]+"'>"+vb[0]+"</span>":"";
+    box.innerHTML="<div class='top'>"+esc(b.from)+" ✕ "+esc(b.to)+badge+"</div>"+
+      "<div class='d'><b>"+esc(b.from)+":</b> "+esc((amap[b.from]||{}).text||"")+"</div>"+
+      "<div class='d'><b>"+esc(b.to)+":</b> "+esc((amap[b.to]||{}).text||"")+"</div>"+
+      "<div class='why'>"+esc(b.note||"")+"</div>";
+    sec3.appendChild(box);
+  });
+  out.appendChild(sec3);
+
+  // load-bearing atoms
+  var lb=D.load_bearing_atoms||[];
+  if(lb.length){
+    var secL=el("section"); secL.appendChild(el("span","act","Load-bearing (by graph in-degree)")); secL.appendChild(el("h2","","The atoms the most claims lean on"));
+    lb.forEach(function(pair){ var id=pair[0],deg=pair[1]; var d=el("div","conf"); d.style.borderLeftColor="var(--accent)"; d.innerHTML="<div class='top'>["+esc(id)+"] · "+deg+" incoming</div><div class='d'>"+esc((amap[id]||{}).text||"")+"</div>"; secL.appendChild(d); });
+    out.appendChild(secL);
+  }
+
+  // atom register by category
+  var byc=D.atoms_by_category||{};
+  var secA=el("section"); secA.appendChild(el("span","act","Steps 1–2 — reasoning atom register")); secA.appendChild(el("h2","",(D.atoms||[]).length+" atoms across "+Object.keys(byc).length+" categories"));
+  var cats={}; (D.atoms||[]).forEach(function(a){ (cats[a.category]=cats[a.category]||[]).push(a); });
+  Object.keys(cats).sort(function(a,b){return cats[b].length-cats[a].length;}).forEach(function(cat){
+    var det=document.createElement("details"); var sum=document.createElement("summary");
+    sum.innerHTML="<span class='id'>"+cats[cat].length+"</span> "+esc(cat);
+    det.appendChild(sum);
+    var body=el("div","body"); cats[cat].forEach(function(a){ var r=document.createElement("div"); r.style.cssText="margin:4px 0;font-size:13px"; r.innerHTML="<span class='id' style='font-family:var(--mono);font-size:11px;color:var(--accent)'>"+esc(a.id)+"</span> "+esc(a.text); body.appendChild(r); });
+    det.appendChild(body); secA.appendChild(det);
+  });
+  out.appendChild(secA);
+}
+
+// ---------- cross-document ----------
+function runCross(){
+  var docs=ST.crossDocs.filter(function(x){return x.text&&x.text.trim();});
+  if(docs.length<2){ alert("Add at least two documents."); return; }
+  var model=document.getElementById("modelc").value;
+  var btn=document.getElementById("crossbtn"); btn.disabled=true; btn.textContent="Analysing…";
+  document.getElementById("cross-out").innerHTML="<div class='empty'>Comparing documents on local hardware…</div>";
+  api("/api/crossdoc",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({documents:docs.map(function(x){return {label:x.filename,text:x.text};}),model:model})})
+   .then(function(d){ renderConflicts(d); })
+   .catch(function(e){ document.getElementById("cross-out").innerHTML="<div class='empty'>Error: "+esc(e.message)+"</div>"; })
+   .then(function(){ btn.disabled=false; btn.textContent="Find conflicts ▸"; });
+}
+function renderConflicts(d){
+  var out=document.getElementById("cross-out"); out.innerHTML="";
+  var cs=d.conflicts||[];
+  var h=el("p","","<span style='font-family:var(--mono);font-size:11px;color:var(--muted)'>"+esc((d.docs||[]).join("  ·  "))+"  —  "+(d.seconds!=null?d.seconds+"s · ":"")+esc(d.model||"")+"</span>");
+  out.appendChild(h);
+  if(!cs.length){ out.appendChild(el("div","empty","No contradictions found across these documents.")); return; }
+  cs.forEach(function(c){
+    var box=el("div","conf");
+    box.innerHTML="<div class='top'>"+esc(c.topic)+" <span class='sev "+esc(c.severity)+"' style='font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;color:#fff;background:var(--fail)'>"+esc(c.severity)+"</span></div>"+
+      "<div class='d'><b>"+esc(c.doc_a)+":</b> "+esc(c.claim_a)+"</div>"+
+      "<div class='d'><b>"+esc(c.doc_b)+":</b> "+esc(c.claim_b)+"</div>"+
+      "<div class='why'>"+esc(c.why)+"</div>";
+    out.appendChild(box);
+  });
+  if(d.id){ var bar=el("div","exportbar"); bar.style.display="flex"; bar.innerHTML="<a class='btn ghost' target='_blank' href='/api/export/"+d.id+"'>⬇ Export PDF</a>"; out.appendChild(bar); }
+}
+
+// ---------- history ----------
+function loadHistory(){
+  var box=document.getElementById("histlist"); box.innerHTML="<div class='empty'>Loading…</div>";
+  api("/api/history").then(function(d){
+    var runs=d.runs||[]; box.innerHTML="";
+    if(!runs.length){ box.innerHTML="<div class='empty'>No saved analyses yet.</div>"; return; }
+    runs.forEach(function(r){
+      var s=r.stats||{}, meta;
+      if(r.kind==="crossdoc"){ meta=(r.conflicts||0)+" conflicts"; }
+      else if(r.kind==="excavation"){ meta=(s.atoms!=null?s.atoms+" atoms · ":"")+(s.contradictions!=null?s.contradictions+" contradictions":""); }
+      else { meta=(s.load_bearing!=null?s.load_bearing+" load-bearing · ":"")+(s.econ_red_flags!=null?s.econ_red_flags+" red flags":""); }
+      var row=el("div","hrow");
+      row.innerHTML="<div><div class='hl'>"+esc(r.label)+"</div><div class='hm'>"+esc(r.created)+" · "+esc(r.model)+"</div></div>"+
+        "<div class='hs'>"+esc(meta)+"</div><span class='del'>✕</span>";
+      row.onclick=function(ev){ if(ev.target.classList.contains("del")){ ev.stopPropagation(); api("/api/history/"+r.id,{method:"DELETE"}).then(loadHistory); return; } openRun(r.id,r.kind); };
+      box.appendChild(row);
+    });
+  });
+}
+function openRun(id,kind){
+  api("/api/history/"+id).then(function(d){
+    if(kind==="crossdoc"){ showView("cross"); renderConflicts(d); window.scrollTo(0,0); return; }
+    if(kind==="excavation"){ showView("excav"); document.getElementById("logx").className="log"; renderExcavation(d); if(d.id){ document.getElementById("exportlinkx").href="/api/export/"+d.id; document.getElementById("exportbarx").style.display="flex"; } window.scrollTo(0,0); return; }
+    showView("new"); render(d); showExport(d); document.getElementById("log").className="log";
+    window.scrollTo(0,0);
+  });
+}
+
+// live elapsed timer on the current stage (so the wait never feels frozen)
+setInterval(function(){
+  var els=document.querySelectorAll(".log.on .ln.cur");
+  Array.prototype.forEach.call(els,function(e){
+    if(!e.dataset.t0) e.dataset.t0=Date.now();
+    var s=Math.round((Date.now()-parseInt(e.dataset.t0,10))/1000);
+    var L=e.querySelector(".live"); if(L) L.textContent=Math.floor(s/60)+":"+("0"+(s%60)).slice(-2);
+  });
+},1000);
+function finalizeLog(box){
+  if(!box) return;
+  Array.prototype.forEach.call(box.querySelectorAll(".ln.cur"), function(e){
+    e.classList.remove("cur"); e.classList.add("done");
+    var s=e.querySelector(".spin"); if(s) s.remove();
+    var l=e.querySelector(".live"); if(l) l.remove();
+  });
+}
+function etaHint(model){
+  var slow=/70|L33|r1/.test(model||"");
+  var base="Runs in stages, each streamed below. Typical total: "+(slow?"~4–6 min on this model":"~1–2 min on the fast model")+". The timer on the right shows elapsed time for the current stage.";
+  var warn="";
+  if(LAST_GPU && LAST_GPU.level==="heavy") warn=" <b style='color:#ffcf7a'>⚠ The shared GPUs are busy right now ("+LAST_GPU.avg_util+"% util) — this run will likely take longer than usual.</b>";
+  else if(LAST_GPU && LAST_GPU.level==="moderate") warn=" <span style='color:#ffcf7a'>(server is moderately busy — may run a little slower)</span>";
+  return "<div class='ln' style='opacity:.75'>"+base+warn+"</div>";
+}
+</script>

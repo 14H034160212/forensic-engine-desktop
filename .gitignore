@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+desktop_dist/
+build/
+dist/
+*.spec
+forensic_app/runs/
+forensic_app/uploads/
+forensic_app/download/
+node_modules/
+src-tauri/target/
+src-tauri/binaries/
+local_deploy.zip
+.DS_Store

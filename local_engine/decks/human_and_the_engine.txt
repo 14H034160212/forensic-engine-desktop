@@ -1,0 +1,37 @@
+The Case
+Why this is worth doing
+The problem: a firehose of fluent, unchecked documents
+Modern AI is superb at producing fluent, professional, confident documents in seconds. However, it is unreliable at catching the deep, hidden flaws inside complex documents and exchanges where assumptions buried several layers down, the contradictions are spread across pages and the claims that look solid on the surface, collapse under scrutiny. The output reads as authoritative, and that is precisely what makes it dangerous: a document that looks finished invites no one to check underneath it.
+At the scale of a whole organisation this produces a firehose. AI can generate more polished, convincing material than anyone has time to genuinely read, let alone interrogate. Surface fluency gets mistaken for soundness, and the volume keeps rising. Underneath sits a structural imbalance: generating a document is now instant and nearly free, while genuinely checking one — excavating its logic to the bottom — remains slow and expensive. The cheap side races ahead of the expensive side, so the quantity of authoritative-looking, unverified material grows faster than the capacity to verify it.
+Figure 1 The Asymmetric Firehose
+This is not a hypothetical worry, and it is already showing up in the returns. Across large surveys, a majority of chief executives report that AI has so far delivered little or no measurable return; independent studies of enterprise deployments report that the large majority of generative-AI initiatives produce no measurable bottom-line impact; and the share of companies abandoning initiatives is rising rather than falling. The money is being spent. The value, on the hardest and highest-stakes work, is not reliably coming through.
+Figure 2 ROI is not coming through
+Why this is structural, not occasional
+In real business use it is rarely “prompt in, definitive answer out.” There is a human in the loop — and, increasingly, an AI on each side of it. One person puts a short prompt into their AI and sends out a polished document. The recipient feeds it into their own AI, which generates the reply. The exchange continues, round after round, with the context behind each document never fully stated and its logic never bottomed out.
+Figure 3 The loop that has quietly become normal. Two failure surfaces compound: the humans may not supply the full context or scrutinise the output, and the AI does not, on its own, surface what the document really assumes and implies
+On low-stakes material none of this matters. On the documents that carry real consequences — strategy, capital allocation, systemic design, anything where a buried false assumption changes the decision — the flaw propagates silently, pass after pass, wearing an ever more professional finish.
+One real exchange makes the pattern concrete: two senior executives traded beautifully crafted business documents for seven months. One was placing incoming material straight into an AI and returning the generated response with minimal prompting and oversight. To that person everything looked perfect. The other person then spent days carefully digesting each reply finding issues each time. A new reply was sent only to receive the same ‘semi-automated AI reply. Seven months was wasted by both sides.
+Figure 4 AI led to increased confusion
+Forensic Engine
+Just like IQ which measures Intelligence Quotient and EQ which measures Emotional Quotient, we define Forensic Engine which measures a person’s performance in the Human – AI Loop.
+Figure 5 The Human in the AI Loop
+Conceptually, Forensic Engine measures how a person’s productive output changes as they use more AI. The steeper the positive gradient, the higher their Forensic Engine. A negative gradient means that increased AI use produces confusing, misleading, dangerous, or efficiency-reducing output. This is shown schematically below.
+Figure 6 Schematic description of Forensic Engine
+Forensic Engine Measured with a Real-World Document
+The C-Suite Pilot Test
+In order to help quantify the problem, experienced C-Suite Executives were given a 13-page real-world Pitch Deck which had recently secured millions of dollars of VC funding. They were told to use their company’s Enterprise LLM AI and with extensive prompting and multiple iterations, examine the Pitch Deck, identify its strengths and weaknesses, and produce a detailed report.
+The Executives probably spent more time and more attention to this Deck than they would have in their normal business day knowing that it was a test.
+Preparation Prior to the Test
+Prior to the test, a highly skilled human had spent 3 full days performing an extensive analysis of the deck. This analysis uncovered multiple logical, practical and technical impossibilities hidden inside the deck. Furthermore, the Deck contained many Load Bearing claims that were highly convincing and credible when subjected only to a surface analysis, but which collapsed when subject to a deep analysis.
+Two independent and fully automated AI scoring engines were developed which reliably scored how many of the problems the C-Suite executives uncovered in the Pitch Deck when they used their company’s Enterprise LLM.
+A score of +100 meant the Executives caught all the errors and a score of zero meant they missed them all. If the executive’s reports made dangerous recommendations, or asserted as true provably false load bearing claims, they were deducted points (given a negative). The maximum negative score was -200. The Pearson Correlation coefficient r for the 2 independent scoring engine was r=0.99 with a gradient of 0.97 and zero offset.
+Results
+All Executives produced deeply flawed reports and not one of the Executives scored greater than zero.
+Figure 7 All C-Suite Executives produced dangerous output with Enterprise AI
+Follow-Up Attempts
+The Executives were then shown all the errors in the Deck and there was agreement these errors were genuine, not discovered and dangerous.
+Subsequent to the test 4 people who now knew the Deck contained serious flaws tried over multiple days to use Cloud AIs to uncover all the errors. Even these people returned negative scores despite using a variety of LLMs.
+Prototype Deep Reasoning Engine
+We then fed the same Pitch Deck into our own separate prototype Deep Reasoning Engine. This Engine was NOT designed for Financial Analysis or Pitch Decks, but rather as a general-purpose Reasoning Engine. The Deep Reasoning Engine had no knowledge of the Canonical Analysis painstakingly prepared by the Expert (4.2) nor of the scoring engines nor of any historical LLM memory or browser history
+The Engine Excavated 995 implicit statements, assumptions and conclusions from the 13-page Deck. The Prototype Engine then analysed the excavations and produced an independent report. When this report was scored by the 2 scoring engines it scored a full +100 on both automated scoring engines –preliminary evidence of the value of the approach that will be discussed more fully in later sections
+Figure 8 The Prototype Reasoning Engine achieved 100%
