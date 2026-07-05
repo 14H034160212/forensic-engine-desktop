@@ -79,18 +79,22 @@ jobs:
 
       - name: Build installer
         working-directory: forensic_app/desktop/tauri
-        run: cargo tauri build
+        run: |
+          TRIPLE=$(rustc -vV | sed -n 's/host: //p')
+          rustup target add "$TRIPLE" || true
+          # pin the build target to the host so it matches the sidecar name we placed
+          cargo tauri build --target "$TRIPLE"
 
       - name: Upload installers (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.os }}
           path: |
-            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.dmg
-            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.msi
-            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.exe
-            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.AppImage
-            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.deb
+            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.dmg
+            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.msi
+            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.exe
+            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.AppImage
+            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.deb
           if-no-files-found: warn
 
   # Publish all installers to a GitHub Release when a v* tag is pushed → a stable download page.
