@@ -11,9 +11,24 @@ Bundled into a single executable so the end user needs NO Python install. On lau
 Note: Ollama itself is a separate native install (https://ollama.com) — a packaged app cannot
 bundle it. If Ollama isn't running, the UI still loads and shows the problem on first analysis.
 """
-import os, sys, time, threading, webbrowser, urllib.request, shutil, subprocess, traceback, datetime
+import os, sys, time, threading, webbrowser, urllib.request, shutil, subprocess, traceback, datetime, socket
 
-PORT = int(os.environ.get("PORT", "8808"))
+DATA_DIR = os.path.join(os.path.expanduser("~"), ".forensic_engine")
+
+def _pick_port():
+    """Honour an explicit PORT; otherwise grab a FREE OS-assigned port so we never collide with
+    whatever else is on the machine (VS Code, other dev servers, a leftover instance…)."""
+    env = os.environ.get("PORT")
+    if env:
+        return int(env)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    p = s.getsockname()[1]
+    s.close()
+    return p
+
+PORT = _pick_port()
+PORT_FILE = os.path.join(DATA_DIR, "port")     # the Tauri shell reads this to find the window URL
 os.environ.setdefault("MODELS", "llama3.2:3b,qwen2.5-coder:7b")
 
 # When launched by the Tauri window (NO_BROWSER=1) we must NOT also pop a system browser.
@@ -21,7 +36,7 @@ NO_BROWSER = os.environ.get("NO_BROWSER", "").strip() in ("1", "true", "yes")
 
 # On Windows the app runs with no console, so stdout is lost — mirror key events to a log file
 # the user can send us if startup fails.
-LOG_PATH = os.path.join(os.path.expanduser("~"), ".forensic_engine", "engine.log")
+LOG_PATH = os.path.join(DATA_DIR, "engine.log")
 def log(msg):
     line = f"{datetime.datetime.now().isoformat(timespec='seconds')}  {msg}"
     print(line, flush=True)
@@ -35,14 +50,6 @@ def log(msg):
 def _ollama_up():
     try:
         urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=2)
-        return True
-    except Exception:
-        return False
-
-def _port_serving():
-    """True if something already answers on our port (a prior instance still running)."""
-    try:
-        urllib.request.urlopen(f"http://127.0.0.1:{PORT}/", timeout=1)
         return True
     except Exception:
         return False
@@ -79,20 +86,18 @@ def main():
     try:
         if not _ensure_ollama():
             log("  ! Ollama not detected on 127.0.0.1:11434 — install from https://ollama.com/download")
-        # if something already serves the port (a prior instance), don't fight it — the window
-        # will just use the running one.
-        if _port_serving():
-            log(f"  port {PORT} already serving — reusing the running instance, this one exits")
-            return
+        # publish the chosen port so the Tauri shell knows where to point the window
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(PORT_FILE, "w", encoding="utf-8") as f:
+                f.write(str(PORT))
+        except Exception:
+            log("  ! could not write port file: " + traceback.format_exc())
         import uvicorn
         from server import app
         threading.Thread(target=_open_browser, daemon=True).start()
         log(f"  serving on http://127.0.0.1:{PORT}/")
-        try:
-            uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
-        except OSError as e:
-            log(f"  port {PORT} in use ({e}) — another instance is serving; this one exits")
-            return
+        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
     except Exception:
         log("FATAL: engine failed to start:\n" + traceback.format_exc())
         raise
