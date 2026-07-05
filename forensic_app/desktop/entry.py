@@ -11,10 +11,26 @@ Bundled into a single executable so the end user needs NO Python install. On lau
 Note: Ollama itself is a separate native install (https://ollama.com) — a packaged app cannot
 bundle it. If Ollama isn't running, the UI still loads and shows the problem on first analysis.
 """
-import os, sys, time, threading, webbrowser, urllib.request, shutil, subprocess
+import os, sys, time, threading, webbrowser, urllib.request, shutil, subprocess, traceback, datetime
 
 PORT = int(os.environ.get("PORT", "8808"))
 os.environ.setdefault("MODELS", "llama3.2:3b,qwen2.5-coder:7b")
+
+# When launched by the Tauri window (NO_BROWSER=1) we must NOT also pop a system browser.
+NO_BROWSER = os.environ.get("NO_BROWSER", "").strip() in ("1", "true", "yes")
+
+# On Windows the app runs with no console, so stdout is lost — mirror key events to a log file
+# the user can send us if startup fails.
+LOG_PATH = os.path.join(os.path.expanduser("~"), ".forensic_engine", "engine.log")
+def log(msg):
+    line = f"{datetime.datetime.now().isoformat(timespec='seconds')}  {msg}"
+    print(line, flush=True)
+    try:
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 def _ollama_up():
     try:
@@ -40,6 +56,8 @@ def _ensure_ollama():
     return False
 
 def _open_browser():
+    if NO_BROWSER:
+        return
     url = f"http://127.0.0.1:{PORT}/"
     for _ in range(40):                      # wait until the server answers, then open once
         try:
@@ -49,15 +67,18 @@ def _open_browser():
     webbrowser.open(url)
 
 def main():
-    print("Forensic Engine — starting locally (nothing leaves this machine)…")
-    if not _ensure_ollama():
-        print("  ! Ollama not detected on 127.0.0.1:11434 — install it from https://ollama.com/download")
-        print("    The window will still open and tell you; analysis needs Ollama running.")
-    import uvicorn
-    from server import app
-    threading.Thread(target=_open_browser, daemon=True).start()
-    print(f"  → http://127.0.0.1:{PORT}/")
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+    log(f"Forensic Engine starting (port {PORT}, frozen={getattr(sys,'frozen',False)})")
+    try:
+        if not _ensure_ollama():
+            log("  ! Ollama not detected on 127.0.0.1:11434 — install from https://ollama.com/download")
+        import uvicorn
+        from server import app
+        threading.Thread(target=_open_browser, daemon=True).start()
+        log(f"  serving on http://127.0.0.1:{PORT}/")
+        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+    except Exception:
+        log("FATAL: engine failed to start:\n" + traceback.format_exc())
+        raise
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,22 @@
 <!doctype html><meta charset="utf-8"><title>Forensic Engine</title>
 <body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#10333A;color:#E7EEF0;display:grid;place-items:center;height:100vh;margin:0">
-<div style="text-align:center"><h2 style="font-family:Georgia,serif;margin:0 0 8px">Forensic Engine</h2>
-<p style="color:#9FE3DE;font-family:ui-monospace,monospace;font-size:13px">starting the local engine…</p></div>
+<div style="text-align:center;max-width:440px;padding:0 20px">
+  <h2 style="font-family:Georgia,serif;margin:0 0 8px">Forensic Engine</h2>
+  <p id="s" style="color:#9FE3DE;font-family:ui-monospace,monospace;font-size:13px">starting the local engine…</p>
+  <p id="hint" style="color:#6f929a;font-size:12px;line-height:1.6;display:none">First launch can take up to a minute while the engine unpacks (antivirus may slow it).<br>If this stays for more than ~2 min, reopen the app.</p>
+</div>
+<script>
+  var url = "http://127.0.0.1:8808/";
+  var n = 0;
+  function poll(){
+    n++;
+    // no-cors probe: resolves once the local server answers, rejects while it is still down
+    fetch(url, {mode:"no-cors", cache:"no-store"})
+      .then(function(){ window.location.replace(url); })
+      .catch(function(){
+        if(n === 8) document.getElementById("hint").style.display = "block";
+        setTimeout(poll, 1500);
+      });
+  }
+  poll();
+</script>
