@@ -1,7 +1,7 @@
 name: Build installers (Tauri)
 
-# Produces real installers (.dmg / .msi / .nsis / .AppImage) by wrapping the PyInstaller binary
-# as a Tauri sidecar. Trigger with a v* tag or manually. Heavier than the PyInstaller-only CI.
+# Produces real installers (.dmg / .msi / .nsis / .AppImage / .deb) by wrapping the PyInstaller
+# binary as a Tauri sidecar, and on a v* tag publishes them to a GitHub Release.
 on:
   workflow_dispatch:
   push:
@@ -44,6 +44,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: forensic_app/desktop/tauri/src-tauri
+
       - name: Linux system deps (webkit2gtk etc.)
         if: runner.os == 'Linux'
         run: |
@@ -51,8 +56,9 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
             libayatana-appindicator3-dev patchelf
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
+      - name: Install Tauri CLI (prebuilt, no compile)
+        uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y tauri-cli
 
       - name: Place sidecar binary (target-triple name)
         working-directory: forensic_app/desktop/tauri
@@ -75,7 +81,7 @@ jobs:
         working-directory: forensic_app/desktop/tauri
         run: cargo tauri build
 
-      - name: Upload installers
+      - name: Upload installers (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.os }}
@@ -86,3 +92,21 @@ jobs:
             forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.AppImage
             forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.deb
           if-no-files-found: warn
+
+  # Publish all installers to a GitHub Release when a v* tag is pushed → a stable download page.
+  release:
+    needs: installers
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true
+          fail_on_unmatched_files: false
