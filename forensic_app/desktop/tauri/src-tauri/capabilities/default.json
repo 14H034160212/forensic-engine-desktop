@@ -6,6 +6,6 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
-    { "identifier": "shell:allow-execute", "allow": [ { "name": "binaries/forensic-engine", "sidecar": true, "args": true } ] }
+    { "identifier": "shell:allow-execute", "allow": [ { "name": "binaries/engine-server", "sidecar": true, "args": true } ] }
   ]
 }

@@ -30,6 +30,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/forensic-engine"]
+    "externalBin": ["binaries/engine-server"]
   }
 }

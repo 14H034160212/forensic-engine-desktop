@@ -60,12 +60,12 @@ jobs:
           TRIPLE=$(rustc -vV | sed -n 's/host: //p')
           mkdir -p src-tauri/binaries
           if [ "$RUNNER_OS" = "Windows" ]; then
-            cp ../../../desktop_dist/ForensicEngine.exe "src-tauri/binaries/forensic-engine-${TRIPLE}.exe"
+            cp ../../../desktop_dist/ForensicEngine.exe "src-tauri/binaries/engine-server-${TRIPLE}.exe"
           else
-            cp ../../../desktop_dist/ForensicEngine "src-tauri/binaries/forensic-engine-${TRIPLE}"
-            chmod +x "src-tauri/binaries/forensic-engine-${TRIPLE}"
+            cp ../../../desktop_dist/ForensicEngine "src-tauri/binaries/engine-server-${TRIPLE}"
+            chmod +x "src-tauri/binaries/engine-server-${TRIPLE}"
           fi
-          echo "sidecar: forensic-engine-${TRIPLE}"
+          echo "sidecar: engine-server-${TRIPLE}"
 
       - name: Generate icons
         working-directory: forensic_app/desktop/tauri

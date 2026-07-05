@@ -17,7 +17,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             // 1) launch the Python app as a sidecar
-            let sidecar = app.shell().sidecar("forensic-engine")
+            let sidecar = app.shell().sidecar("engine-server")
                 .expect("sidecar 'forensic-engine' not found");
             let (mut rx, _child) = sidecar.spawn().expect("failed to spawn sidecar");
             tauri::async_runtime::spawn(async move {
