@@ -73,6 +73,15 @@ jobs:
           fi
           echo "sidecar: engine-server-${TRIPLE}"
 
+      - name: Set app version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: forensic_app/desktop/tauri
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          sed -i.bak 's/"version": "[^"]*"/"version": "'"$V"'"/' src-tauri/tauri.conf.json
+          rm -f src-tauri/tauri.conf.json.bak
+          echo "app version set to $V"
+
       - name: Generate icons
         working-directory: forensic_app/desktop/tauri
         run: cargo tauri icon src-tauri/icon-source.png
