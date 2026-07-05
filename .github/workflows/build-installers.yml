@@ -27,11 +27,19 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Python deps + PyInstaller binary
+      - name: Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r forensic_app/requirements-laptop.txt pyinstaller
-          bash forensic_app/desktop/build.sh
+
+      - name: Build PyInstaller binary (non-Windows)
+        if: runner.os != 'Windows'
+        run: bash forensic_app/desktop/build.sh
+
+      - name: Build PyInstaller binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: forensic_app\desktop\build.bat
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
