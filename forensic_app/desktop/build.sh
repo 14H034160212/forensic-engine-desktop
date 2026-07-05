@@ -6,9 +6,11 @@
 # native client is the light tier; contradiction verification degrades gracefully without it.
 set -e
 R="$(cd "$(dirname "$0")/../.." && pwd)"          # project root
-SEP=":"; [ "$(uname)" = "Darwin" ] && SEP=":"
+SEP=":"                                            # PyInstaller --add-data separator
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) SEP=";";; esac   # Windows (git-bash) needs ';'
+PY=python3; command -v python3 >/dev/null 2>&1 || PY=python
 cd "$R"
-python3 -m PyInstaller --onefile --name ForensicEngine \
+"$PY" -m PyInstaller --onefile --name ForensicEngine \
   --distpath "$R/desktop_dist" --workpath /tmp/pyi_work --specpath /tmp/pyi_spec \
   --paths "$R/forensic_app" --paths "$R/local_engine" \
   --add-data "$R/forensic_app/static${SEP}forensic_app/static" \

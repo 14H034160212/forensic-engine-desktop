@@ -1,0 +1,80 @@
+name: Build installers (Tauri)
+
+# Produces real installers (.dmg / .msi / .nsis / .AppImage) by wrapping the PyInstaller binary
+# as a Tauri sidecar. Trigger with a v* tag or manually. Heavier than the PyInstaller-only CI.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  installers:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+          - os: windows-latest
+          - os: macos-latest
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python deps + PyInstaller binary
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r forensic_app/requirements-laptop.txt pyinstaller
+          bash forensic_app/desktop/build.sh
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux system deps (webkit2gtk etc.)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            libayatana-appindicator3-dev patchelf
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Place sidecar binary (target-triple name)
+        working-directory: forensic_app/desktop/tauri
+        run: |
+          TRIPLE=$(rustc -vV | sed -n 's/host: //p')
+          mkdir -p src-tauri/binaries
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp ../../../desktop_dist/ForensicEngine.exe "src-tauri/binaries/forensic-engine-${TRIPLE}.exe"
+          else
+            cp ../../../desktop_dist/ForensicEngine "src-tauri/binaries/forensic-engine-${TRIPLE}"
+            chmod +x "src-tauri/binaries/forensic-engine-${TRIPLE}"
+          fi
+          echo "sidecar: forensic-engine-${TRIPLE}"
+
+      - name: Generate icons
+        working-directory: forensic_app/desktop/tauri
+        run: cargo tauri icon src-tauri/icon-source.png
+
+      - name: Build installer
+        working-directory: forensic_app/desktop/tauri
+        run: cargo tauri build
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.dmg
+            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.msi
+            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.exe
+            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.AppImage
+            forensic_app/desktop/tauri/src-tauri/target/release/bundle/**/*.deb
+          if-no-files-found: warn
