@@ -38,24 +38,60 @@ def strip_think(c):
     return (c.split("</think>")[-1] if "</think>" in c else c).strip()
 
 def chat(system, user, temperature=0.2):
+    # num_ctx: Ollama defaults to only 2048, which truncates long docs + long JSON replies
+    # (especially on small models) → unparseable output. num_predict caps the reply generously.
     r = post("/api/chat", {
         "model": LLM, "stream": False,
-        "options": {"temperature": temperature},
+        "options": {"temperature": temperature,
+                    "num_ctx": int(os.environ.get("NUM_CTX", "8192")),
+                    "num_predict": int(os.environ.get("NUM_PREDICT", "4096"))},
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}]})
     return strip_think(r["message"]["content"])
 
+def _salvage_json(txt):
+    """Best-effort recovery of a TRUNCATED JSON reply (common on small models): cut at the last
+    safe point (end of a string / element / after a comma) and close the open brackets."""
+    safe = 0; in_str = False; esc = False
+    for i, ch in enumerate(txt):
+        if in_str:
+            if esc: esc = False
+            elif ch == "\\": esc = True
+            elif ch == '"': in_str = False; safe = i + 1
+            continue
+        if ch == '"': in_str = True
+        elif ch in "}]": safe = i + 1
+        elif ch == ",": safe = i + 1
+    s = txt[:safe].rstrip().rstrip(",")
+    st = []; in_str = False; esc = False
+    for ch in s:
+        if in_str:
+            if esc: esc = False
+            elif ch == "\\": esc = True
+            elif ch == '"': in_str = False
+            continue
+        if ch == '"': in_str = True
+        elif ch == "{": st.append("}")
+        elif ch == "[": st.append("]")
+        elif ch in "}]":
+            if st: st.pop()
+    try:
+        return json.loads(s + "".join(reversed(st)))
+    except Exception:
+        return None
+
 def chat_json(system, user, temperature=0.2, retries=2):
-    """Ask for JSON, parse robustly (strip prose / code fences / think blocks)."""
+    """Ask for JSON, parse robustly. On persistent failure, salvage a truncated reply; if that
+    also fails, return {} rather than crashing the whole analysis — a degraded stage beats a dead run."""
     hint = ("\n\nRespond with ONLY valid JSON — no preamble, no markdown fences, "
             "no commentary before or after.")
+    raw = ""
     for attempt in range(retries + 1):
         raw = chat(system, user + hint, temperature)
         txt = raw.strip()
         if txt.startswith("```"):
             txt = re.sub(r"^```[a-zA-Z]*\n?", "", txt)
             txt = re.sub(r"\n?```$", "", txt).strip()
-        # grab the outermost JSON object/array
         m = re.search(r"(\{.*\}|\[.*\])", txt, re.DOTALL)
         if m:
             try:
@@ -64,7 +100,12 @@ def chat_json(system, user, temperature=0.2, retries=2):
                 pass
         user = (user + "\n\nYour previous reply was not parseable JSON. "
                 "Return STRICT JSON only.")
-    raise ValueError("Could not parse JSON after retries. Last raw:\n" + raw[:800])
+    salvaged = _salvage_json(txt if txt.startswith(("{", "[")) else raw)
+    if isinstance(salvaged, (dict, list)):
+        sys.stderr.write("[chat_json] recovered a truncated JSON reply\n")
+        return salvaged
+    sys.stderr.write("[chat_json] could not parse JSON after retries; degrading this stage\n")
+    return {}
 
 # ----------------------------------------------------------------------------- #
 # Document-type profiles — calibrate the framing so an essay/report isn't prosecuted

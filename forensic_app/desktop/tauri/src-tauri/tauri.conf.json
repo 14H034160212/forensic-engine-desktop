@@ -13,7 +13,8 @@
         "width": 1200,
         "height": 860,
         "resizable": true,
-        "visible": true
+        "visible": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {
