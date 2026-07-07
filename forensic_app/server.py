@@ -78,7 +78,7 @@ def _save_run(result):
           "".join(c for c in (result.get("label") or "run").lower() if c.isalnum())[:20]
     result["id"] = rid
     result["created"] = datetime.datetime.now().isoformat(timespec="seconds")
-    json.dump(result, open(os.path.join(RUNS, rid + ".json"), "w"), ensure_ascii=False, indent=2)
+    json.dump(result, open(os.path.join(RUNS, rid + ".json"), "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     return rid
 
 # ----------------------------------------------------------------- pages
@@ -400,7 +400,7 @@ def history():
         if not fn.endswith(".json"):
             continue
         try:
-            d = json.load(open(os.path.join(RUNS, fn)))
+            d = json.load(open(os.path.join(RUNS, fn), encoding="utf-8"))
         except Exception:
             continue
         items.append({"id": d.get("id", fn[:-5]), "label": d.get("label", "—"),
@@ -415,7 +415,7 @@ def get_run(rid: str):
     p = os.path.join(RUNS, rid + ".json")
     if not os.path.exists(p):
         return JSONResponse({"error": "not found"}, status_code=404)
-    return json.load(open(p))
+    return json.load(open(p, encoding="utf-8"))
 
 @app.delete("/api/history/{rid}")
 def del_run(rid: str):
@@ -430,7 +430,7 @@ def export_pdf(rid: str):
     p = os.path.join(RUNS, rid + ".json")
     if not os.path.exists(p):
         return JSONResponse({"error": "not found"}, status_code=404)
-    d = json.load(open(p))
+    d = json.load(open(p, encoding="utf-8"))
     html = _report_html(d)
     try:
         from weasyprint import HTML

@@ -13,6 +13,14 @@ bundle it. If Ollama isn't running, the UI still loads and shows the problem on 
 """
 import os, sys, time, threading, webbrowser, urllib.request, shutil, subprocess, traceback, datetime, socket
 
+# Force UTF-8 everywhere — on a Chinese/Japanese Windows the default codec is GBK/CP932, which
+# crashes when writing findings that contain characters like '‑' (non-breaking hyphen).
+for _s in (sys.stdout, sys.stderr):
+    try: _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception: pass
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+os.environ.setdefault("PYTHONUTF8", "1")
+
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".forensic_engine")
 
 def _pick_port():
