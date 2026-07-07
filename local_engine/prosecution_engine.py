@@ -193,14 +193,25 @@ def decompose(deck):
         "35 crisp statements (one assumption each).")
     return _wrap(chat_json(sys_p, usr), "claims")
 
+def _as_text(c):
+    """A claim may come back as a plain string OR a dict (small models vary) — coerce to text."""
+    if isinstance(c, str):
+        return c
+    if isinstance(c, dict):
+        for k in ("text", "claim", "statement", "assumption", "content"):
+            if isinstance(c.get(k), str):
+                return c[k]
+        return json.dumps(c, ensure_ascii=False)
+    return str(c)
+
 def pass_two(deck, p1_findings, claims):
-    p1_titles = "; ".join(f.get("name", "") for f in p1_findings)
+    p1_titles = "; ".join((f.get("name", "") if isinstance(f, dict) else str(f)) for f in p1_findings)
     usr = (
         "Here is the document:\n\n<document>\n" + deck + "\n</document>\n\n"
         "PASS ONE already found these issues (do NOT merely repeat them):\n" +
         p1_titles + "\n\n"
         "Here are the excavated LEVEL-2 statements:\n- " +
-        "\n- ".join(claims) + "\n\n"
+        "\n- ".join(_as_text(c) for c in claims) + "\n\n"
         "PASS TWO — subject these Level-2 statements to the same forensic scrutiny. "
         "Report ONLY what is NEW or materially STRENGTHENED vs Pass One. Pay special "
         "attention to STRUCTURAL CONTRADICTIONS ('pincers'): pairs of claims/promises that "
