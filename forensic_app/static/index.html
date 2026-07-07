@@ -327,7 +327,8 @@ function render(D){
     var s5=el("section"); s5.appendChild(el("span","act","The excavation layer"));
     s5.appendChild(el("h2","","The "+cl.length+L.claims));
     s5.appendChild(el("p","","Each is a statement the deck never prints but silently requires — the raw material Pass 2 interrogates."));
-    var box=el("div","claims"); cl.forEach(function(c){ box.appendChild(el("div","","• "+esc(c))); });
+    var claimText=function(c){ return (typeof c==="string")?c:(c&&(c.text||c.claim||c.statement||c.assumption||c.content))||(c?JSON.stringify(c):""); };
+    var box=el("div","claims"); cl.forEach(function(c){ box.appendChild(el("div","","• "+esc(claimText(c)))); });
     s5.appendChild(box); C.appendChild(s5);
   }
 }

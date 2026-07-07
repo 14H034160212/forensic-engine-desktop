@@ -191,7 +191,10 @@ def decompose(deck):
         "the things it never states but needs the reader to believe. "
         "Return JSON: {\"claims\": [\"...\", \"...\"]}. Be exhaustive — return AT LEAST "
         "35 crisp statements (one assumption each).")
-    return _wrap(chat_json(sys_p, usr), "claims")
+    d = _wrap(chat_json(sys_p, usr), "claims")
+    if isinstance(d, dict) and isinstance(d.get("claims"), list):
+        d["claims"] = [_as_text(c) for c in d["claims"]]   # small models sometimes return dicts
+    return d
 
 def _as_text(c):
     """A claim may come back as a plain string OR a dict (small models vary) — coerce to text."""
