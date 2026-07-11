@@ -67,7 +67,7 @@ def verify_excavation(res, on_stage=None):
         res["verified"] = False
         return
     if on_stage:
-        on_stage("verify", f"Verifying {len(bonds)} contradiction bonds (logic NLI)…")
+        on_stage("verify", f"Verifying {len(bonds)} contradiction bonds (logic NLI)...")
     try:
         r = LV.verify_contradictions(res)
     except Exception:
@@ -305,22 +305,22 @@ def run_stream(payload: dict):
             t0 = time.time()
             yield ev({"stage": "start", "msg": f"Engine starting · {model} · {profile} · blind · local, zero egress"})
 
-            yield ev({"stage": "p1", "msg": "Pass 1 — reviewing the document…"})
+            yield ev({"stage": "p1", "msg": "Pass 1 — reviewing the document..."})
             p1 = _coerce(E.pass_one(deck).get("findings", []))
             yield ev({"stage": "p1done", "msg": f"Pass 1 — {len(p1)} surface charges", "t": round(time.time()-t0)})
 
-            yield ev({"stage": "dec", "msg": "Excavating hidden assumptions…"})
+            yield ev({"stage": "dec", "msg": "Excavating hidden assumptions..."})
             claims = E.decompose(deck).get("claims", [])
             yield ev({"stage": "decdone", "msg": f"Excavated {len(claims)} Level-2 assumptions", "t": round(time.time()-t0)})
 
-            yield ev({"stage": "p2", "msg": "Pass 2 — structural contradictions…"})
+            yield ev({"stage": "p2", "msg": "Pass 2 — structural contradictions..."})
             p2 = _coerce(E.pass_two(deck, p1, claims).get("findings", []))
             npin = sum(1 for f in p2 if f.get("type") == "pincer")
             yield ev({"stage": "p2done", "msg": f"Pass 2 — {len(p2)} new ({npin} pincers)", "t": round(time.time()-t0)})
 
             packs, routed = [], []
             if USE_PACKS:
-                yield ev({"stage": "rules", "msg": "Applying the routed domain rulebook…"})
+                yield ev({"stage": "rules", "msg": "Applying the routed domain rulebook..."})
                 try:
                     packs, routed = T.run(deck)
                 except Exception:
@@ -331,11 +331,11 @@ def run_stream(payload: dict):
                                  f"({', '.join(routed) if routed else 'no pack matched — out of domain'})",
                           "t": round(time.time()-t0)})
 
-            yield ev({"stage": "econ", "msg": "Computing unit economics from the deck's own numbers…"})
+            yield ev({"stage": "econ", "msg": "Computing unit economics from the deck's own numbers..."})
             econ = E.compute_economics(E.figures_for(deck))   # LLM + deterministic regex overlay
             yield ev({"stage": "econdone", "msg": f"{len(econ['metrics'])} metrics · {econ['danger_count']} red flags", "t": round(time.time()-t0)})
 
-            yield ev({"stage": "integ", "msg": "Integrating the case…"})
+            yield ev({"stage": "integ", "msg": "Integrating the case..."})
             integ = E.integrate(deck, p1, p2)
             yield ev({"stage": "integdone", "msg": "Case integrated", "t": round(time.time()-t0)})
 

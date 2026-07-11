@@ -25,7 +25,7 @@ DATA_DIR = os.path.join(os.path.expanduser("~"), ".forensic_engine")
 
 def _pick_port():
     """Honour an explicit PORT; otherwise grab a FREE OS-assigned port so we never collide with
-    whatever else is on the machine (VS Code, other dev servers, a leftover instance…)."""
+    whatever else is on the machine (VS Code, other dev servers, a leftover instance...)."""
     env = os.environ.get("PORT")
     if env:
         return int(env)
@@ -100,12 +100,12 @@ def _ollama_binary():
 def _install_ollama():
     """Auto-install Ollama with no manual step. Windows: download the official installer and run it
     silently (per-user, no admin). Other OSes: best-effort; else the UI guides to the download page."""
-    _write_setup("install-ollama", None, "Installing the local AI runtime (Ollama)…")
+    _write_setup("install-ollama", None, "Installing the local AI runtime (Ollama)...")
     try:
         if os.name == "nt":
             import tempfile
             dst = os.path.join(tempfile.gettempdir(), "OllamaSetup.exe")
-            log("  downloading Ollama installer…")
+            log("  downloading Ollama installer...")
             urllib.request.urlretrieve("https://ollama.com/download/OllamaSetup.exe", dst)
             # We don't know if Ollama's installer is Inno or NSIS, so try both silent conventions,
             # then fall back to a normal (click-through) run. Stop as soon as ollama appears.
@@ -153,7 +153,7 @@ def _has_model(name):
 def _pull_model(name):
     """Pull the default model via Ollama's streaming /api/pull, reporting % to the setup file so the
     user sees progress instead of a mystery wait. No manual `ollama pull` needed."""
-    _write_setup("pull-model", 0, f"Downloading the default model ({name})…")
+    _write_setup("pull-model", 0, f"Downloading the default model ({name})...")
     try:
         import json as J
         req = urllib.request.Request("http://127.0.0.1:11434/api/pull",
@@ -205,7 +205,7 @@ def main():
     try:
         # First-run auto-setup (install Ollama if missing, pull the default model) runs in the BACKGROUND
         # so the window opens instantly and shows a progress banner instead of blocking on a GB download.
-        _write_setup("starting", None, "Starting…")
+        _write_setup("starting", None, "Starting...")
         threading.Thread(target=_autosetup, daemon=True).start()
         # publish the chosen port so the Tauri shell knows where to point the window
         try:
