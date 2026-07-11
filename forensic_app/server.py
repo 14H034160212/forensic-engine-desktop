@@ -151,7 +151,7 @@ def local_deploy_zip():
     return FileResponse(p, media_type="application/zip", filename="local_deploy.zip")
 
 # fixed upstream that publishes the latest build (this same demo server)
-UPDATE_SOURCE = os.environ.get("UPDATE_SOURCE", "https://forensic-engine.example")
+UPDATE_SOURCE = os.environ.get("UPDATE_SOURCE", "https://chivalry-premises-ferocity.ngrok-free.dev")
 
 def _local_version():
     try:
@@ -169,7 +169,7 @@ def update_check():
     """Ask the upstream demo server for the latest version and compare. Graceful when offline:
     returns available=False / latest=None rather than erroring."""
     cur = _local_version()
-    if UPDATE_SOURCE.rstrip("/").endswith("forensic-engine.example") and _is_self():
+    if UPDATE_SOURCE.rstrip("/").endswith("chivalry-premises-ferocity.ngrok-free.dev") and _is_self():
         return {"current": cur, "latest": cur, "available": False, "self": True}
     latest = None
     try:
