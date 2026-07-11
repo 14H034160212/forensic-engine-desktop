@@ -122,8 +122,8 @@
     <div class="grp">Library</div>
     <a id="nav-hist" onclick="showView('hist');loadHistory()">History</a>
     <div class="grp">Run it locally</div>
-    <a href="/download" target="_blank">⬇ Get the app</a>
-    <a href="/laptop" target="_blank">Laptop feasibility</a>
+    <a id="getapp" style="cursor:pointer">⬇ Get the app</a>
+    <a id="getlaptop" style="cursor:pointer">Laptop feasibility</a>
     <div id="verbadge" style="margin-top:auto;padding-top:14px;font-family:var(--mono);font-size:10.5px;color:var(--muted)"></div>
   </nav>
   <div class="main"><div class="inner">
@@ -378,20 +378,59 @@ api("/api/ollama").then(function(o){
   document.body.insertBefore(bar, document.body.firstChild);
 }).catch(function(){});
 
+// ---------- app detection + external-open (fixes Tauri blocking target=_blank) ----------
+var IS_APP = !!(window.__TAURI__);
+var PUB = "https://doctors-wto-jane-works.trycloudflare.com";   // public demo/download host (update when the permanent domain is live)
+function openExternal(url){                       // external URL -> system browser in-app, else new tab
+  try{ if(IS_APP){ var t=window.__TAURI__;
+    if(t.shell && t.shell.open){ t.shell.open(url); return; }
+    if(t.opener && t.opener.openUrl){ t.opener.openUrl(url); return; } } }catch(e){}
+  window.open(url, "_blank");
+}
+function openLocal(path){                          // local page -> same window in-app (no popup), else new tab
+  if(IS_APP){ location.href = path; } else { window.open(path, "_blank"); }
+}
+(function(){
+  var g=document.getElementById("getapp");
+  if(g) g.onclick=function(){ openExternal(IS_APP ? PUB+"/download" : "/download"); };
+  var l=document.getElementById("getlaptop");
+  if(l) l.onclick=function(){ openLocal("/laptop"); };
+})();
+
 // ---------- version badge + update check ----------
 api("/api/version").then(function(v){
   var b=document.getElementById("verbadge");
   if(b && v && v.version) b.textContent="v"+v.version;
 }).catch(function(){});
-api("/api/update-check").then(function(u){
-  if(u && u.available){ var b=document.getElementById("verbadge");
-    if(b) b.innerHTML="v"+esc(u.current)+" · <span style='color:#9FE3DE'>update ⬆</span>"; }
-  if(!u || !u.available) return;
-  var bar=document.createElement("div");
-  bar.style.cssText="position:sticky;top:0;z-index:60;background:#10333A;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;display:flex;gap:10px;align-items:center;justify-content:center;border-bottom:1px solid #0b2a30";
-  bar.innerHTML="⬆ Update available — <b style='color:#9FE3DE'>"+esc(u.latest)+"</b> (you have "+esc(u.current)+"). Run <code style='background:#0b2a30;padding:1px 6px;border-radius:3px'>./update.sh</code> or <code style='background:#0b2a30;padding:1px 6px;border-radius:3px'>update.bat</code>, then restart. <span style='cursor:pointer;opacity:.6' onclick='this.parentNode.remove()'>✕</span>";
-  document.body.insertBefore(bar, document.body.firstChild);
-}).catch(function(){});
+if(IS_APP){
+  // Packaged app self-update path: compare this build to the public host's latest, and if newer turn
+  // "Get the app" into an Update action that opens the download page in the system browser. (Full
+  // one-click auto-update via tauri-plugin-updater comes once the permanent update URL is live.)
+  Promise.all([
+    api("/api/version").then(function(v){return v&&v.version||null;}).catch(function(){return null;}),
+    fetch(PUB+"/api/version").then(function(r){return r.json();}).then(function(v){return v&&v.version||null;}).catch(function(){return null;})
+  ]).then(function(r){
+    var cur=r[0], latest=r[1];
+    if(!cur || !latest || !(latest>cur)) return;         // date-string YYYY.MM.DD-N compares correctly
+    var g=document.getElementById("getapp"); if(g) g.innerHTML="⬆ Update to v"+esc(latest);
+    var bar=document.createElement("div");
+    bar.style.cssText="position:sticky;top:0;z-index:60;background:#10333A;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;display:flex;gap:10px;align-items:center;justify-content:center;border-bottom:1px solid #0b2a30";
+    bar.innerHTML="⬆ New version <b style='color:#9FE3DE'>v"+esc(latest)+"</b> available (you have v"+esc(cur)+"). <span id='updbtn' style='cursor:pointer;text-decoration:underline;color:#9FE3DE'>Download the update</span> <span style='cursor:pointer;opacity:.6' onclick='this.parentNode.remove()'>&#10005;</span>";
+    document.body.insertBefore(bar, document.body.firstChild);
+    var ub=document.getElementById("updbtn"); if(ub) ub.onclick=function(){ openExternal(PUB+"/download"); };
+  }).catch(function(){});
+} else {
+  // Source/zip install (not the packaged app): the ./update.sh path still applies.
+  api("/api/update-check").then(function(u){
+    if(u && u.available){ var b=document.getElementById("verbadge");
+      if(b) b.innerHTML="v"+esc(u.current)+" &middot; <span style='color:#9FE3DE'>update &#8593;</span>"; }
+    if(!u || !u.available) return;
+    var bar=document.createElement("div");
+    bar.style.cssText="position:sticky;top:0;z-index:60;background:#10333A;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;display:flex;gap:10px;align-items:center;justify-content:center;border-bottom:1px solid #0b2a30";
+    bar.innerHTML="&#8593; Update available &mdash; <b style='color:#9FE3DE'>"+esc(u.latest)+"</b> (you have "+esc(u.current)+"). Run <code style='background:#0b2a30;padding:1px 6px;border-radius:3px'>./update.sh</code> or <code style='background:#0b2a30;padding:1px 6px;border-radius:3px'>update.bat</code>, then restart. <span style='cursor:pointer;opacity:.6' onclick='this.parentNode.remove()'>&#10005;</span>";
+    document.body.insertBefore(bar, document.body.firstChild);
+  }).catch(function(){});
+}
 
 // ---------- live GPU load (shared server; real utilisation from nvidia-smi) ----------
 var LAST_GPU=null;
