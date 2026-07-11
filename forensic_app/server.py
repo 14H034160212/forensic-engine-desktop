@@ -30,6 +30,20 @@ from fastapi.responses import (HTMLResponse, JSONResponse, StreamingResponse,
 RUNS = os.path.join(_DATA, "runs")
 os.makedirs(RUNS, exist_ok=True)
 RUN_LOCK = threading.Lock()
+_RUN_AT = [0.0]                 # when the current holder acquired it
+RUN_STALE_SECS = 900           # a run holding the lock longer than this is presumed dead → reclaim it
+def _acquire_run():
+    """Non-blocking acquire with a stale-lock safety net: if a previous run hung/died without releasing
+    (e.g. a stalled Ollama call), don't lock the app out forever — reclaim the lock once it's clearly stale."""
+    import time as _t
+    if RUN_LOCK.acquire(blocking=False):
+        _RUN_AT[0] = _t.time(); return True
+    if _t.time() - _RUN_AT[0] > RUN_STALE_SECS:      # held too long → previous run is dead; steal it
+        try: RUN_LOCK.release()
+        except RuntimeError: pass
+        if RUN_LOCK.acquire(blocking=False):
+            _RUN_AT[0] = _t.time(); return True
+    return False
 MODELS = [m.strip() for m in os.environ.get(
     "MODELS", "qwen2.5-coder:7b,qwen2.5-coder:32b,L3370B:latest").split(",") if m.strip()]
 
@@ -297,7 +311,7 @@ def run_stream(payload: dict):
         def ev(o): return "data: " + json.dumps(o) + "\n\n"
         if not deck:
             yield ev({"error": "empty deck"}); return
-        if not RUN_LOCK.acquire(blocking=False):
+        if not _acquire_run():
             yield ev({"error": "another analysis is running — try again in a moment"}); return
         try:
             _set_model(model)
@@ -370,7 +384,7 @@ def crossdoc(payload: dict):
             for i, d in enumerate(docs) if (d.get("text") or "").strip()]
     if len(docs) < 2:
         return {"conflicts": [], "note": "Provide at least two documents."}
-    if not RUN_LOCK.acquire(blocking=False):
+    if not _acquire_run():
         return JSONResponse({"error": "another analysis is running"}, status_code=409)
     try:
         _set_model(model)
@@ -399,7 +413,7 @@ def excavate_stream(payload: dict):
         def ev(o): return "data: " + json.dumps(o) + "\n\n"
         if not text:
             yield ev({"error": "empty document"}); return
-        if not RUN_LOCK.acquire(blocking=False):
+        if not _acquire_run():
             yield ev({"error": "another analysis is running — try again shortly"}); return
         q = queue.Queue()
         holder = {}
