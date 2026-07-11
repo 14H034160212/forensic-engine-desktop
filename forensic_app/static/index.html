@@ -380,7 +380,7 @@ api("/api/ollama").then(function(o){
 
 // ---------- app detection + external-open (fixes Tauri blocking target=_blank) ----------
 var IS_APP = !!(window.__TAURI__);
-var PUB = "https://doctors-wto-jane-works.trycloudflare.com";   // public demo/download host (update when the permanent domain is live)
+var PUB = "https://chivalry-premises-ferocity.ngrok-free.dev";   // public demo/download host (update when the permanent domain is live)
 function openExternal(url){                       // external URL -> system browser in-app, else new tab
   try{ if(IS_APP && window.__TAURI__.core && window.__TAURI__.core.invoke){
     window.__TAURI__.core.invoke("open_external", {url: url}); return; } }catch(e){}
