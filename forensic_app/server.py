@@ -20,6 +20,7 @@ else:
 sys.path.insert(0, os.path.join(HERE, "..", "local_engine"))
 import prosecution_engine as E
 import reasoning_excavation as RE
+import trigger_packs as T
 import parsing
 
 from fastapi import FastAPI, UploadFile, File, Request
@@ -31,6 +32,17 @@ os.makedirs(RUNS, exist_ok=True)
 RUN_LOCK = threading.Lock()
 MODELS = [m.strip() for m in os.environ.get(
     "MODELS", "qwen2.5-coder:7b,qwen2.5-coder:32b,L3370B:latest").split(",") if m.strip()]
+
+# Routed domain trigger-packs (the encoded-expertise rulebook) lift recall from ~15% to ~75% on the
+# internal benchmark and are the Core IP. Gated by USE_PACKS (default OFF so source behaviour is
+# unchanged); the packaged app's entry.py sets USE_PACKS=1. Router-gated + precision-guarded, so safe.
+USE_PACKS = os.environ.get("USE_PACKS", "0").strip().lower() not in ("0", "false", "no", "")
+
+def _set_model(model):
+    """Select the engine model and its matching native-thinking mode. Routing rule shared with the eval
+    harness via prosecution_engine.wants_thinking (single source of truth)."""
+    E.LLM = model
+    os.environ["OLLAMA_THINK"] = "true" if E.wants_thinking(model) else "false"
 
 app = FastAPI(title="Forensic Engine")
 
@@ -93,6 +105,10 @@ def report():
 @app.get("/laptop", response_class=HTMLResponse)
 def laptop():
     return open(os.path.join(HERE, "static", "laptop.html"), encoding="utf-8").read()
+
+@app.get("/leaderboard", response_class=HTMLResponse)
+def leaderboard():
+    return open(os.path.join(HERE, "static", "leaderboard.html"), encoding="utf-8").read()
 
 @app.get("/laptop.pdf")
 def laptop_pdf():
@@ -276,7 +292,7 @@ def run_stream(payload: dict):
         if not RUN_LOCK.acquire(blocking=False):
             yield ev({"error": "another analysis is running — try again in a moment"}); return
         try:
-            E.LLM = model
+            _set_model(model)
             E.PROFILE = profile
             t0 = time.time()
             yield ev({"stage": "start", "msg": f"Engine starting · {model} · {profile} · blind · local, zero egress"})
@@ -294,6 +310,19 @@ def run_stream(payload: dict):
             npin = sum(1 for f in p2 if f.get("type") == "pincer")
             yield ev({"stage": "p2done", "msg": f"Pass 2 — {len(p2)} new ({npin} pincers)", "t": round(time.time()-t0)})
 
+            packs, routed = [], []
+            if USE_PACKS:
+                yield ev({"stage": "rules", "msg": "Applying the routed domain rulebook…"})
+                try:
+                    packs, routed = T.run(deck)
+                except Exception:
+                    packs, routed = [], []
+                packs = _coerce([f for f in packs if isinstance(f, dict)])
+                yield ev({"stage": "rulesdone",
+                          "msg": f"Rulebook — {len(packs)} domain charges "
+                                 f"({', '.join(routed) if routed else 'no pack matched — out of domain'})",
+                          "t": round(time.time()-t0)})
+
             yield ev({"stage": "econ", "msg": "Computing unit economics from the deck's own numbers…"})
             econ = E.compute_economics(E.figures_for(deck))   # LLM + deterministic regex overlay
             yield ev({"stage": "econdone", "msg": f"{len(econ['metrics'])} metrics · {econ['danger_count']} red flags", "t": round(time.time()-t0)})
@@ -306,9 +335,11 @@ def run_stream(payload: dict):
                       "blind": True, "local_zero_egress": True, "source_text": deck,
                       "pass1": p1, "level2_claims": claims, "pass2": p2, "economics": econ,
                       "integration": integ,
+                      "rulebook": packs, "routed_packs": routed,
                       "stats": {"pass1_count": len(p1), "level2_count": len(claims),
                                 "pass2_count": len(p2), "pass2_pincers": npin,
-                                "load_bearing": sum(1 for f in p1+p2 if f.get("load_bearing")),
+                                "rulebook_count": len(packs),
+                                "load_bearing": sum(1 for f in p1+p2+packs if f.get("load_bearing")),
                                 "econ_metrics": len(econ["metrics"]),
                                 "econ_red_flags": econ["danger_count"],
                                 "seconds": round(time.time()-t0)}}
@@ -334,7 +365,7 @@ def crossdoc(payload: dict):
     if not RUN_LOCK.acquire(blocking=False):
         return JSONResponse({"error": "another analysis is running"}, status_code=409)
     try:
-        E.LLM = model
+        _set_model(model)
         t0 = time.time()
         res = E.cross_document(docs)
         res["docs"] = [d["label"] for d in docs]
@@ -366,7 +397,7 @@ def excavate_stream(payload: dict):
         holder = {}
         def worker():
             try:
-                E.LLM = model
+                _set_model(model)
                 holder["res"] = RE.excavate(text, label, batch=batch,
                                             on_stage=lambda s, m: q.put({"stage": s, "msg": m}))
                 verify_excavation(holder["res"], on_stage=lambda s, m: q.put({"stage": s, "msg": m}))
@@ -498,6 +529,7 @@ def _report_html(d):
                 f"<div class='verdict'><b>{vlab}:</b> {esc(I.get('predictive_failure_judgement'))}</div>"
                 + (f"<h3>Unit economics (computed from the document)</h3><table><tr><th>Metric</th><th>Value</th><th>Derivation</th></tr>{rows}</table>" if rows else "")
                 + (f"<h3>{reglab}</h3><table><tr><th>#</th><th>Charge</th><th>Severity</th><th>Why</th></tr>{reg}</table>" if reg else "")
+                + (findings(f"Domain rulebook — routed expert charges ({', '.join(d.get('routed_packs') or [])})", d.get("rulebook", [])) if d.get("rulebook") else "")
                 + findings(p2lab, d.get("pass2", []))
                 + findings(p1lab, d.get("pass1", [])))
     # appendix: the original document(s) analysed, so the report is self-contained

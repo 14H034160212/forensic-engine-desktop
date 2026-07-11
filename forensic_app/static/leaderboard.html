@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forensic Engine — Model Evaluation Leaderboard</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#15212b; --muted:#5b6b7a; --line:#e2e7ec;
+    --accent:#0d6e6e; --good:#1a7f52; --bad:#b3261e; --warn:#b5820a; --chip:#eef2f5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0e141a; --card:#151e26; --ink:#e7eef2; --muted:#9fb0bd; --line:#26323c;
+      --accent:#3fb6b6; --good:#4fce8f; --bad:#ff6b60; --warn:#e2ad3c; --chip:#1c2830; }
+  }
+  :root[data-theme="dark"]{ --bg:#0e141a; --card:#151e26; --ink:#e7eef2; --muted:#9fb0bd; --line:#26323c;
+      --accent:#3fb6b6; --good:#4fce8f; --bad:#ff6b60; --warn:#e2ad3c; --chip:#1c2830; }
+  :root[data-theme="light"]{ --bg:#f7f8fa; --card:#ffffff; --ink:#15212b; --muted:#5b6b7a; --line:#e2e7ec;
+      --accent:#0d6e6e; --good:#1a7f52; --bad:#b3261e; --warn:#b5820a; --chip:#eef2f5; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:27px;margin:0 0 4px;letter-spacing:-.01em}
+  h2{font-size:19px;margin:38px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;margin:20px 0 6px;color:var(--accent)}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  .verdict{background:linear-gradient(135deg,var(--accent),transparent);border:1px solid var(--line)}
+  .verdict b{font-size:17px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0}
+  th,td{border-bottom:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .win{background:color-mix(in srgb,var(--good) 12%,transparent)}
+  .good{color:var(--good);font-weight:700} .bad{color:var(--bad);font-weight:700} .warn{color:var(--warn);font-weight:700}
+  .tag{display:inline-block;background:var(--chip);border-radius:999px;padding:1px 9px;font-size:11.5px;color:var(--muted);margin:1px 2px}
+  .scroll{overflow-x:auto}
+  code{background:var(--chip);padding:1px 6px;border-radius:5px;font-size:12.5px}
+  ul{margin:6px 0 6px 2px;padding-left:20px} li{margin:3px 0}
+  .foot{color:var(--muted);font-size:12px;margin-top:40px;border-top:1px solid var(--line);padding-top:12px}
+  .pill{font-size:11px;padding:1px 7px;border-radius:6px;font-weight:700}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Forensic Engine — Model Evaluation</h1>
+  <p class="sub">An internal, measured study of which local open-weights model best drives the engine —
+     scored on <b>recall</b> (catching an expert's flaws) and <b>precision</b> (staying quiet on clean
+     documents). ~36 models across 4 sweeps. Last updated 2026-07-11.</p>
+
+  <div class="card verdict">
+    <b>Verdict: <code>gemma4:26b</code> (thinking off) is the production pick.</b><br>
+    <span class="sub" style="color:var(--ink)">79% recall / 1 false-positive on the broadened set (after the
+    trigger-pack precision fix) — beating the previous engine model <code>qwen2.5-coder:32b</code> (74% / 12)
+    on <b>both</b> axes. Efficient alternative: <code>gpt-oss:20b</code> (74% / 2, MoE 3.6B active).
+    Zero-false-positive, no-container option: general <code>qwen2.5:32b</code> (71% / 0).</span>
+  </div>
+
+  <h2>How the benchmark was built</h2>
+  <div class="card">
+    <p style="margin-top:0">The eval set pairs real documents with an <b>answer key</b> of their genuine flaws,
+    so the engine's output can be scored the way an expert would.</p>
+    <h3>Cases (10 documents)</h3>
+    <div class="scroll"><table>
+      <tr><th>Kind</th><th>Case</th><th>Answer key</th><th class="n">Gold flaws</th></tr>
+      <tr><td>flawed (real)</td><td>Felix / Kerrio 10-week trial</td><td>Kerry's takedown</td><td class="n">8</td></tr>
+      <tr><td>flawed (real)</td><td>PsyScale mental-health deck</td><td>Kerry's Integrated Prosecution</td><td class="n">16</td></tr>
+      <tr><td>flawed (real)</td><td>QuickBite $1B streaming deck</td><td>Kerry's Final Report</td><td class="n">9</td></tr>
+      <tr><td>flawed (held-out)</td><td>CalmPath (synthetic medical/trial)</td><td>planted, same-class</td><td class="n">9</td></tr>
+      <tr><td>flawed (held-out)</td><td>Voltra Pay (synthetic fintech/crypto)</td><td>planted</td><td class="n">10</td></tr>
+      <tr><td>flawed (held-out)</td><td>DwellHands (synthetic marketplace)</td><td>planted</td><td class="n">11</td></tr>
+      <tr><td>clean</td><td>LedgerFlow (strong pitch)</td><td>— (0 flaws expected)</td><td class="n">0</td></tr>
+      <tr><td>clean</td><td>Verrata (sound SaaS pitch)</td><td>—</td><td class="n">0</td></tr>
+      <tr><td>clean</td><td>Solvara (sound biotech update)</td><td>—</td><td class="n">0</td></tr>
+      <tr><td>clean</td><td>EV-fleet market report</td><td>—</td><td class="n">0</td></tr>
+    </table></div>
+    <p><b>Recall</b> = of 63 gold flaws across the 6 flawed docs, how many the engine's output captures,
+    scored by a fixed strong LLM judge (<code>qwen2.5-coder:32b</code>) with <b>k=3 self-consistency voting</b>
+    (1 deterministic + 2 sampled verdicts, majority). The judge is held fixed so the yardstick doesn't move
+    when the engine model changes. <b>Precision</b> = spurious findings on the 4 genuinely-clean docs
+    (ideal = 0). Every model is run through the same engine (blind multi-pass + deterministic arithmetic +
+    routed domain rulebooks) so only the model varies.</p>
+    <p class="sub">Each gold flaw is also annotated with its <b>habitat</b> — the structural niche it lives in.
+    Across 63 flaws the dominant habitat is <b>confidence-grounding-gap</b> (49/63 ≈ 78%): a claim asserted
+    far more confidently than the evidence supports. That is the highest-leverage signal to detect.</p>
+  </div>
+
+  <h2>Leaderboard (broadened set: 63 gold flaws · 4 clean docs)</h2>
+  <p class="sub">Ranked by the balance that matters — high recall <i>and</i> low false-positives. FP is measured
+  over all 4 clean docs. <span class="pill" style="background:var(--chip)">†</span> = re-scored after the
+  medical/trial pack precision fix (model-independent; it lowers everyone's FP, so pre-fix rows carry
+  inflated FP — compare within, not across, the fix line).</p>
+  <div class="card scroll">
+  <table>
+    <tr><th>#</th><th>Model</th><th>Think</th><th class="n">Recall /63</th><th class="n">FP</th><th>Read</th></tr>
+    <tr class="win"><td>1</td><td><b>gemma4:26b</b> †</td><td>off</td><td class="n">79%</td><td class="n good">1</td><td>best balance — production pick</td></tr>
+    <tr><td>2</td><td><b>gpt-oss:20b</b> †</td><td>on</td><td class="n">74%</td><td class="n good">2</td><td>MoE 3.6B active → fast; efficient pick</td></tr>
+    <tr><td>3</td><td>qwq:32b</td><td>on</td><td class="n">76%</td><td class="n">6</td><td>strong reasoner; best on clean clinical</td></tr>
+    <tr><td>4</td><td><b>qwen2.5:32b</b> (general)</td><td>off</td><td class="n">71%</td><td class="n good">0</td><td>zero FP; runs on old Ollama (no container)</td></tr>
+    <tr><td>5</td><td>deepseek-r1:14b</td><td>on</td><td class="n good">80%</td><td class="n bad">15</td><td>top recall, poor precision</td></tr>
+    <tr><td>6</td><td>yi:34b</td><td>off</td><td class="n">77%</td><td class="n bad">20</td><td>high recall, poor precision</td></tr>
+    <tr><td>7</td><td>qwen3:14b</td><td>off</td><td class="n">79%</td><td class="n bad">16</td><td>high recall, high FP</td></tr>
+    <tr><td>8</td><td>gemma3:27b</td><td>off</td><td class="n">79%</td><td class="n bad">18</td><td>high recall, high FP</td></tr>
+    <tr><td>9</td><td>mistral-small:latest †</td><td>off</td><td class="n">71%</td><td class="n">9</td><td>narrow-set star that fell back; over-fires medical</td></tr>
+    <tr><td>—</td><td>qwen2.5-coder:32b <i>(prev. incumbent)</i></td><td>off</td><td class="n">74%</td><td class="n">12</td><td>superseded on both axes</td></tr>
+    <tr><td>—</td><td>gemma3:12b</td><td>off</td><td class="n">79%</td><td class="n bad">31</td><td>recall via crying wolf</td></tr>
+    <tr><td>—</td><td>exaone3.5:32b</td><td>off</td><td class="n">69%</td><td class="n bad">33</td><td>—</td></tr>
+    <tr><td>—</td><td>aya-expanse:32b</td><td>off</td><td class="n">63%</td><td class="n">10</td><td>mid recall, mid FP — not competitive</td></tr>
+    <tr><td>—</td><td>phi4:14b</td><td>off</td><td class="n bad">60%</td><td class="n">12</td><td>recall collapses on the harder set</td></tr>
+    <tr><td>—</td><td>falcon3:10b</td><td>off</td><td class="n">60%</td><td class="n">19</td><td>—</td></tr>
+    <tr><td>—</td><td>mistral-nemo:12b</td><td>off</td><td class="n">57%</td><td class="n">11</td><td>—</td></tr>
+    <tr><td>—</td><td>glm4:9b</td><td>off</td><td class="n">53%</td><td class="n bad">37</td><td>—</td></tr>
+    <tr><td>—</td><td>phi4-mini</td><td>off</td><td class="n">52%</td><td class="n bad">50</td><td>tiny → over-fires badly</td></tr>
+    <tr><td>—</td><td>command-r:35b</td><td>off</td><td class="n">46%</td><td class="n">8</td><td>—</td></tr>
+    <tr><td>—</td><td>tulu3:8b / command-r7b / mixtral:8x7b / olmo2:13b / hermes3:8b</td><td>off</td><td class="n">33–42%</td><td class="n">1–18</td><td>not competitive</td></tr>
+    <tr><td>—</td><td>nemotron-mini</td><td>off</td><td class="n bad">7%</td><td class="n">11</td><td>unusable for this task</td></tr>
+  </table>
+  </div>
+  <p class="sub">Recall spread across the top tier (74–80%) is within measurement noise (±3–4); the robust
+  discriminator is <b>false-positives</b>, where <code>gemma4:26b</code>, general <code>qwen2.5:32b</code>,
+  and <code>gpt-oss:20b</code> lead decisively.</p>
+
+  <h2>Model strengths &amp; weaknesses</h2>
+  <div class="grid">
+    <div class="card"><h3>gemma4:26b — the pick</h3>
+      <ul><li><b>+</b> best recall/precision balance (79% / 1 after fix)</li>
+      <li><b>+</b> thinking-off → simple, no reasoning latency; ~16GB</li>
+      <li><b>+</b> router fires correctly; balanced across every case</li>
+      <li><b>−</b> needs the newer Ollama (runs in the Docker 0.30.10 container)</li></ul></div>
+    <div class="card"><h3>gpt-oss:20b — the efficient one</h3>
+      <ul><li><b>+</b> 74% / 2; MoE, only 3.6B active → fast on modest hardware</li>
+      <li><b>+</b> reasoning-native: thinking <i>helps</i> its precision</li>
+      <li><b>−</b> needs thinking on (slower per call) + newer Ollama</li></ul></div>
+    <div class="card"><h3>qwen2.5:32b (general) — the safe one</h3>
+      <ul><li><b>+</b> <b>0 false-positives</b>; 71% recall</li>
+      <li><b>+</b> runs on the existing system Ollama — <b>no container dependency</b></li>
+      <li><b>−</b> ~8 recall points behind gemma4:26b</li></ul></div>
+    <div class="card"><h3>The high-recall / high-FP tier</h3>
+      <ul><li>deepseek-r1:14b (80%/15), yi:34b (77%/20), qwen3:14b (79%/16), gemma3 (79%/18–31)</li>
+      <li><b>−</b> they reach high recall by flagging aggressively — the FP cost is not worth ~3 recall points</li></ul></div>
+    <div class="card"><h3>mistral-small — the cautionary tale</h3>
+      <ul><li>Looked like the winner on a <i>single</i> clean doc (80%/0), then fell to 71%/9 on the broadened
+      set — it over-applies the medical rules even with the precision guard.</li>
+      <li>Why broadening the eval mattered: one clean doc was luck.</li></ul></div>
+    <div class="card"><h3>Small models (≤10B) &amp; qwen3-hybrid</h3>
+      <ul><li>Small models (phi4-mini, glm4:9b, tulu3, hermes3) over-fire badly on clean docs (FP 8–50).</li>
+      <li>qwen3 <i>hybrid</i> thinking, turned on, <b>lowers</b> recall (argues itself charitable).</li></ul></div>
+  </div>
+
+  <h2>What the study actually proved</h2>
+  <div class="card">
+    <ul>
+      <li><b>"Reason harder" is not the lever.</b> A generic deeper-reasoning pass moved recall ~15%→18%;
+        turning a hybrid model's own thinking <i>up</i> lowered recall (76%→69%).</li>
+      <li><b>Importing an external frame IS the lever.</b> Routed domain rulebooks took recall from ~15% to
+        ~75%; a held-out clinical pitch went 0/9 → 9/9. Depth didn't do that — a foreign frame did.</li>
+      <li><b>Thinking, done right, helps precision.</b> Purpose-built reasoners (gpt-oss, qwq) give the best
+        precision; hybrid-toggle thinking (qwen3) hurts recall. It's <i>which</i> reasoning, not whether.</li>
+      <li><b>The biggest lever is the rulebook, not the model.</b> Fixing where the packs over-fire on clean
+        clinical text cut false-positives more than any model swap (gemma4:26b FP 7→1).</li>
+      <li><b>False-positives, not recall, separate the models</b> — recall bunches in the noise band; precision
+        does not.</li>
+      <li><b>~36 models tested; none beats gemma4:26b.</b> The model is a secondary lever behind the encoded
+        rules, the precision fix, and routing.</li>
+    </ul>
+  </div>
+
+  <h2>Reasoning research — routing, not depth (the "caterpillar" work)</h2>
+  <div class="card">
+    <p style="margin-top:0">The frontier isn't a deeper analyser (buyable with compute) — it's knowing
+    <b>where</b> to dig. Three mechanisms built and measured:</p>
+    <ul>
+      <li><b>Collision detector</b> — forces claims that sit pages apart into contact. On Christoph's Kaiora
+        deck, from the neutral decomposition and <b>with zero hints</b>, our engine independently recovered
+        <b>5 of the 6 load-bearing findings</b> from the day-long manual takedown — including the
+        "LTV/CAC ratio asserted with no working" that manually needed a human to spot. (The one miss, a
+        deleted chart axis, is a visual-only fact — an external-frame caterpillar.)</li>
+      <li><b>Confidence-grounding meter</b> — the mechanical "whoa": flags claims whose confidence outruns
+        their support. That habitat covers <b>78%</b> of all gold flaws; the meter catches them and stays
+        quiet on genuinely-hedged writing.</li>
+      <li><b>Habitat-annotated corpus</b> (63 flaws) — turns "find every flaw" into an ethology of where
+        flaws live, so routing is measurable.</li>
+    </ul>
+    <p class="sub">Two honest results that shape the design: (1) <b>flaws are LEAF nodes, not central
+    hubs</b> — the naive "dig the high-centrality node" heuristic is rejected by the data; the useful signal
+    is the collision/confidence-gap marker on a specific claim. (2) A learned bait-routing policy matches
+    "run everything" on recall but only pays over a <b>habitat-diverse</b> corpus — on a homogeneous set a
+    cheap fixed heuristic wins, so the corpus is the next bottleneck. Across the board these are
+    <b>routing signals</b> (where to look) that must verify against the source before charging — used as
+    blanket finding-generators they add no recall and cost precision.</p>
+  </div>
+
+  <div class="foot">
+    Internal decision-support evaluation · blind multi-pass engine + deterministic arithmetic + routed
+    rulebooks · judge = qwen2.5-coder:32b (k=3) · Confidential — not for distribution.
+    <span id="ts"></span>
+  </div>
+</div>
+<script>
+  // reflect the app's theme toggle if present; otherwise follow the OS
+  try{var t=localStorage.getItem('theme'); if(t){document.documentElement.setAttribute('data-theme',t);}}catch(e){}
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 """
 Automated 2-Pass Blind Forensic Prosecution Engine
 ==================================================
-Reproduces, in code, a manual two-stage method:
+Reproduces, in code, Kerry's manual two-stage method:
 
   Pass 1  – prosecutor reads the SURFACE deck text and catalogues every weakness,
             error, misleading statement, internal contradiction and execution risk.
@@ -21,12 +21,19 @@ FULLY LOCAL / ZERO EGRESS: runs entirely against a local Ollama daemon. No third
 API, nothing sent off the machine — the privacy moat is the architecture.
 
 Usage:
-  LLM_MODEL=deepseek-r1:32b python3 prosecution_engine.py decks/quickbite.txt the sample
+  LLM_MODEL=deepseek-r1:32b python3 prosecution_engine.py decks/psyscale.txt PsyScale
 """
 import json, urllib.request, os, sys, time, re
 
 OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 LLM    = os.environ.get("LLM_MODEL", "deepseek-r1:32b")
+
+# Single source of truth for per-model native-thinking routing (measured 2026-07-10): reasoning-native
+# models score best with thinking ON; hybrid-toggle (qwen3) and plain models score best with it OFF.
+# Shared by the app (server.py) and the eval harness so the two never diverge.
+THINK_ON_FRAGMENTS = ("gpt-oss", "qwq", "deepseek-r1", "magistral")
+def wants_thinking(model):
+    return any(f in (model or "").lower() for f in THINK_ON_FRAGMENTS)
 
 def post(path, payload, timeout=1200):
     req = urllib.request.Request(OLLAMA + path,
@@ -40,19 +47,34 @@ def strip_think(c):
 def chat(system, user, temperature=0.2):
     # num_ctx: Ollama defaults to only 2048, which truncates long docs + long JSON replies
     # (especially on small models) → unparseable output. num_predict caps the reply generously.
-    r = post("/api/chat", {
+    body = {
         "model": LLM, "stream": False,
         "options": {"temperature": temperature,
                     "num_ctx": int(os.environ.get("NUM_CTX", "8192")),
                     "num_predict": int(os.environ.get("NUM_PREDICT", "4096"))},
         "messages": [{"role": "system", "content": system},
-                     {"role": "user", "content": user}]})
+                     {"role": "user", "content": user}]}
+    # Hybrid "thinking" models (qwen3/qwen3.5/...) spend their whole token budget inside a
+    # <think> block and never emit the JSON → the stage degrades to empty and scores unfairly.
+    # OLLAMA_THINK=false sends Ollama's native think toggle to disable it. Default: unset →
+    # body unchanged, so existing models (qwen2.5-coder:32b, the product path) are untouched.
+    think = os.environ.get("OLLAMA_THINK")
+    if think is not None:
+        body["think"] = think.strip().lower() not in ("0", "false", "no", "off")
+    try:
+        r = post("/api/chat", body)
+    except Exception:
+        # model/server doesn't accept the think field → retry without it
+        if "think" in body:
+            body.pop("think"); r = post("/api/chat", body)
+        else:
+            raise
     return strip_think(r["message"]["content"])
 
 def _salvage_json(txt):
     """Best-effort recovery of a TRUNCATED JSON reply (common on small models): cut at the last
     safe point (end of a string / element / after a comma) and close the open brackets."""
-    safe = 0; in_str = False; esc = False
+    safe = 0; stack = 0; in_str = False; esc = False
     for i, ch in enumerate(txt):
         if in_str:
             if esc: esc = False
@@ -60,9 +82,11 @@ def _salvage_json(txt):
             elif ch == '"': in_str = False; safe = i + 1
             continue
         if ch == '"': in_str = True
-        elif ch in "}]": safe = i + 1
+        elif ch in "{[": stack += 1
+        elif ch in "}]": stack -= 1; safe = i + 1
         elif ch == ",": safe = i + 1
     s = txt[:safe].rstrip().rstrip(",")
+    # recompute the closers needed for the trimmed string
     st = []; in_str = False; esc = False
     for ch in s:
         if in_str:
@@ -81,8 +105,9 @@ def _salvage_json(txt):
         return None
 
 def chat_json(system, user, temperature=0.2, retries=2):
-    """Ask for JSON, parse robustly. On persistent failure, salvage a truncated reply; if that
-    also fails, return {} rather than crashing the whole analysis — a degraded stage beats a dead run."""
+    """Ask for JSON, parse robustly (strip prose / code fences / think blocks). On persistent
+    failure, salvage a truncated reply; if that also fails, return {} rather than crashing the
+    whole analysis — a degraded stage beats a dead run."""
     hint = ("\n\nRespond with ONLY valid JSON — no preamble, no markdown fences, "
             "no commentary before or after.")
     raw = ""
@@ -92,6 +117,7 @@ def chat_json(system, user, temperature=0.2, retries=2):
         if txt.startswith("```"):
             txt = re.sub(r"^```[a-zA-Z]*\n?", "", txt)
             txt = re.sub(r"\n?```$", "", txt).strip()
+        # grab the outermost JSON object/array
         m = re.search(r"(\{.*\}|\[.*\])", txt, re.DOTALL)
         if m:
             try:
@@ -100,6 +126,7 @@ def chat_json(system, user, temperature=0.2, retries=2):
                 pass
         user = (user + "\n\nYour previous reply was not parseable JSON. "
                 "Return STRICT JSON only.")
+    # last resort: salvage a truncated reply, else degrade to {} (don't crash the run)
     salvaged = _salvage_json(txt if txt.startswith(("{", "[")) else raw)
     if isinstance(salvaged, (dict, list)):
         sys.stderr.write("[chat_json] recovered a truncated JSON reply\n")
@@ -549,7 +576,7 @@ def run(deck_path, label):
     return out
 
 if __name__ == "__main__":
-    deck_path = sys.argv[1] if len(sys.argv) > 1 else "decks/quickbite.txt"
+    deck_path = sys.argv[1] if len(sys.argv) > 1 else "decks/psyscale.txt"
     label = sys.argv[2] if len(sys.argv) > 2 else os.path.basename(deck_path).split(".")[0]
     result = run(deck_path, label)
     os.makedirs("prosecution_out", exist_ok=True)

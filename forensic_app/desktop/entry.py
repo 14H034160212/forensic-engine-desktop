@@ -37,7 +37,13 @@ def _pick_port():
 
 PORT = _pick_port()
 PORT_FILE = os.path.join(DATA_DIR, "port")     # the Tauri shell reads this to find the window URL
-os.environ.setdefault("MODELS", "llama3.2:3b,qwen2.5-coder:7b")
+# Model menu (first = priority default). gemma4:26b is the measured strongest engine model
+# (79% recall / 1 false-positive on the internal benchmark) — offered as the priority option; the
+# small models are KEPT for weak laptops. gemma4:26b needs a modern local Ollama (>=0.6) + ~16GB RAM.
+os.environ.setdefault("MODELS", "gemma4:26b,qwen2.5-coder:7b,llama3.2:3b")
+# Turn the routed domain rulebook ON by default — it is what delivers the recall (blind engine alone
+# is ~15%). Router-gated + precision-guarded; users on tiny models can still analyse, just more slowly.
+os.environ.setdefault("USE_PACKS", "1")
 
 # When launched by the Tauri window (NO_BROWSER=1) we must NOT also pop a system browser.
 NO_BROWSER = os.environ.get("NO_BROWSER", "").strip() in ("1", "true", "yes")
