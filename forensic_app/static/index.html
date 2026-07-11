@@ -382,13 +382,14 @@ api("/api/ollama").then(function(o){
 var IS_APP = !!(window.__TAURI__);
 var PUB = "https://doctors-wto-jane-works.trycloudflare.com";   // public demo/download host (update when the permanent domain is live)
 function openExternal(url){                       // external URL -> system browser in-app, else new tab
-  try{ if(IS_APP){ var t=window.__TAURI__;
-    if(t.shell && t.shell.open){ t.shell.open(url); return; }
-    if(t.opener && t.opener.openUrl){ t.opener.openUrl(url); return; } } }catch(e){}
+  try{ if(IS_APP && window.__TAURI__.core && window.__TAURI__.core.invoke){
+    window.__TAURI__.core.invoke("open_external", {url: url}); return; } }catch(e){}
+  try{ if(IS_APP && window.__TAURI__.shell && window.__TAURI__.shell.open){ window.__TAURI__.shell.open(url); return; } }catch(e){}
   window.open(url, "_blank");
 }
-function openLocal(path){                          // local page -> same window in-app (no popup), else new tab
-  if(IS_APP){ location.href = path; } else { window.open(path, "_blank"); }
+function openLocal(path){                          // info pages (laptop/leaderboard): open in the SYSTEM
+  // browser in-app too, so the Tauri window (which has no Back button) never leaves the analysis SPA.
+  if(IS_APP){ openExternal(PUB + path); } else { window.open(path, "_blank"); }
 }
 (function(){
   var g=document.getElementById("getapp");

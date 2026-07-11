@@ -18,9 +18,18 @@ fn port_file() -> PathBuf {
     PathBuf::from(home).join(".forensic_engine").join("port")
 }
 
+// Open a URL in the user's SYSTEM browser. The webview blocks target=_blank and the served page has no
+// reliable plugin JS binding, so the frontend calls this via core.invoke — a dependable path that keeps
+// the app window on the analysis SPA (info/download links never navigate the window away).
+#[tauri::command]
+fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    app.shell().open(url, None).map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![open_external])
         .setup(|app| {
             let win = app.get_webview_window("main").unwrap();
 
