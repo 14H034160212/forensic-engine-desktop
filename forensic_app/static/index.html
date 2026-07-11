@@ -397,6 +397,26 @@ function openLocal(path){                          // local page -> same window 
   if(l) l.onclick=function(){ openLocal("/laptop"); };
 })();
 
+// ---------- first-run auto-setup progress (packaged app: install Ollama + pull default model) ----------
+(function(){
+  var STAGES={"starting":1,"install-ollama":1,"pull-model":1,"need-ollama":1};
+  var el=null;
+  function tick(){
+    fetch("/api/setup").then(function(r){return r.json();}).then(function(s){
+      var active = s && STAGES[s.stage] && !s.done;
+      if(!active){ if(el){el.remove(); el=null;} return; }   // ready/unknown/done -> no banner
+      if(!el){ el=document.createElement("div");
+        el.style.cssText="position:sticky;top:0;z-index:70;background:#0b2a30;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;text-align:center;border-bottom:1px solid #10333A";
+        document.body.insertBefore(el, document.body.firstChild); }
+      if(s.error){ el.innerHTML="&#9888; Setup: "+esc(s.error)+" &mdash; you can still pick a model you already have."; return; }
+      var pct=(s.percent!=null? " &mdash; "+s.percent+"%":"");
+      el.innerHTML="&#8987; First-run setup: "+esc(s.message||s.stage)+pct+" (one-time; the app is usable once this finishes)";
+      setTimeout(tick,1500);
+    }).catch(function(){ setTimeout(tick,3000); });
+  }
+  if(IS_APP) tick();
+})();
+
 // ---------- version badge + update check ----------
 api("/api/version").then(function(v){
   var b=document.getElementById("verbadge");

@@ -110,6 +110,14 @@ def laptop():
 def leaderboard():
     return open(os.path.join(HERE, "static", "leaderboard.html"), encoding="utf-8").read()
 
+@app.get("/api/setup")
+def setup_status():
+    """First-run auto-setup progress (Ollama install + default-model pull), written by entry.py."""
+    try:
+        return json.load(open(os.path.join(_DATA, "setup.json"), encoding="utf-8"))
+    except Exception:
+        return {"stage": "unknown", "done": True}
+
 @app.get("/laptop.pdf")
 def laptop_pdf():
     html = open(os.path.join(HERE, "static", "laptop.html"), encoding="utf-8").read()
