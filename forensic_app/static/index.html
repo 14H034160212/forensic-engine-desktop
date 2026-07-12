@@ -1,5 +1,5 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Forensic Engine · Forensic Engine</title>
+<title>Forensic Engine</title>
 <style>
   :root{
     --ground:#EDF1F3;--panel:#FFFFFF;--text:#15212B;--muted:#5A6B78;--rule:#D5DEE2;
@@ -109,7 +109,7 @@
   .gpu-line{display:inline-block;font-family:var(--mono);font-size:11px;border:1px solid var(--rule);border-radius:20px;padding:3px 11px;color:var(--muted);margin:0 0 14px}
 </style>
 <div class="topbar">
-  <span class="brand">Forensic Engine · Forensic Engine</span>
+  <span class="brand">Forensic Engine</span>
   <span class="badge2" id="gpu-badge" style="margin-left:auto;display:none" title="Live GPU load on the shared server — updates every few seconds">GPU …</span>
   <span class="badge2" style="margin-left:8px">🔒 local · zero egress · blind</span>
 </div>
@@ -381,21 +381,16 @@ api("/api/ollama").then(function(o){
 // ---------- app detection + external-open (fixes Tauri blocking target=_blank) ----------
 var IS_APP = !!(window.__TAURI__);
 var PUB = "https://chivalry-premises-ferocity.ngrok-free.dev";   // public demo/download host (update when the permanent domain is live)
-function openExternal(url){                       // external URL -> system browser in-app, else new tab
-  try{ if(IS_APP && window.__TAURI__.core && window.__TAURI__.core.invoke){
-    window.__TAURI__.core.invoke("open_external", {url: url}); return; } }catch(e){}
-  try{ if(IS_APP && window.__TAURI__.shell && window.__TAURI__.shell.open){ window.__TAURI__.shell.open(url); return; } }catch(e){}
-  window.open(url, "_blank");
-}
-function openLocal(path){                          // info pages (laptop/leaderboard): open in the SYSTEM
-  // browser in-app too, so the Tauri window (which has no Back button) never leaves the analysis SPA.
-  if(IS_APP){ openExternal(PUB + path); } else { window.open(path, "_blank"); }
-}
+// The Tauri webview blocks BOTH target=_blank/window.open AND IPC from this localhost-served page, so
+// external-open is impossible here. Same-ORIGIN navigation to the app's own pages DOES work — so the
+// sidebar links just navigate to the local /download and /laptop pages (served by the bundled server),
+// and those pages carry a "Back" link. In a normal browser this simply navigates too.
+function goPage(path){ location.href = path; }
 (function(){
   var g=document.getElementById("getapp");
-  if(g) g.onclick=function(){ openExternal(IS_APP ? PUB+"/download" : "/download"); };
+  if(g) g.onclick=function(){ goPage("/download"); };
   var l=document.getElementById("getlaptop");
-  if(l) l.onclick=function(){ openLocal("/laptop"); };
+  if(l) l.onclick=function(){ goPage("/laptop"); };
 })();
 
 // ---------- first-run auto-setup progress (packaged app: install Ollama + pull default model) ----------
@@ -438,7 +433,7 @@ if(IS_APP){
     bar.style.cssText="position:sticky;top:0;z-index:60;background:#10333A;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;display:flex;gap:10px;align-items:center;justify-content:center;border-bottom:1px solid #0b2a30";
     bar.innerHTML="⬆ New version <b style='color:#9FE3DE'>v"+esc(latest)+"</b> available (you have v"+esc(cur)+"). <span id='updbtn' style='cursor:pointer;text-decoration:underline;color:#9FE3DE'>Download the update</span> <span style='cursor:pointer;opacity:.6' onclick='this.parentNode.remove()'>&#10005;</span>";
     document.body.insertBefore(bar, document.body.firstChild);
-    var ub=document.getElementById("updbtn"); if(ub) ub.onclick=function(){ openExternal(PUB+"/download"); };
+    var ub=document.getElementById("updbtn"); if(ub) ub.onclick=function(){ goPage("/download"); };
   }).catch(function(){});
 } else {
   // Source/zip install (not the packaged app): the ./update.sh path still applies.

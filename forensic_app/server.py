@@ -219,6 +219,7 @@ ol{padding-left:22px} li{margin:0 0 10px}
 pre{background:#10333A;color:#E7EEF0;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:13px;white-space:pre-wrap}
 code{background:#dde7ea;padding:1px 6px;border-radius:3px;font-size:13px}
 .zh{color:#5A6B78;font-size:14px}</style>
+<a href="/" style="display:inline-block;margin-bottom:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#0E6E78;text-decoration:none">&#8592; Back to the app</a>
 <h1>Forensic Engine — run it on your own laptop</h1>
 <p class=sub>Downloads a self-contained bundle. Everything runs locally; nothing leaves your machine.<br>
 <span class=zh>下载一个自包含部署包,整套在本机运行,数据不出你的电脑。</span></p>
