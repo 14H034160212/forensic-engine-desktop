@@ -98,6 +98,7 @@
 
   .log{background:#08313a;color:#dff1f0;border-radius:8px;padding:14px 16px;margin:16px 0;font-family:var(--mono);font-size:12.5px;line-height:1.7;display:none}
   .log.on{display:block} .log .ln{opacity:.5} .log .ln.cur{opacity:1;color:#9FE3DE} .log .ln.cur::before{content:"▸ "} .log .ln.done::before{content:"✓ ";color:#7fd6a8} .log .t{float:right;opacity:.5}
+  .log .ln.err{opacity:1;color:#ff9b9b} .log .ln.err::before{content:"⚠ ";color:#ff9b9b}
   .spin{display:inline-block;width:11px;height:11px;border:2px solid #2c5a63;border-top-color:#9FE3DE;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-1px;margin-left:6px} @keyframes sp{to{transform:rotate(360deg)}}
   .exportbar{display:flex;gap:10px;margin:18px 0;align-items:center}
   .hist{display:grid;gap:8px} .hrow{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;cursor:pointer}
@@ -530,6 +531,11 @@ function renderFiles(isCross, which){
 
 // ---------- streaming run ----------
 var logEl=document.getElementById("log");
+function logFail(msg){
+  // A failed run: mark the still-spinning stage as failed (no ✓) and append a red error line.
+  Array.prototype.forEach.call(logEl.querySelectorAll(".ln.cur"),function(x){x.classList.remove("cur");x.classList.add("err");});
+  var e=document.createElement("div"); e.className="ln err"; e.innerHTML=esc(msg); logEl.appendChild(e);
+}
 function logStage(key,msg,done,t){
   var id="ln-"+key, e=document.getElementById(id);
   if(!e){ e=document.createElement("div"); e.id=id; e.className="ln cur"; logEl.appendChild(e); }
@@ -558,7 +564,7 @@ function runSingle(){
      return pump();
    }).catch(function(e){ logStage("err","Error: "+e.message,true); finish(); });
   function handle(o){
-    if(o.error){ logStage("err","⚠ "+o.error,true); return; }
+    if(o.error){ logFail(o.error); return; }
     if(o.stage==="result"){ render(o.result); showExport(o.result); return; }
     if(o.stage){ var done=/done$/.test(o.stage)||o.stage==="start"; logStage(o.stage.replace(/done$/,""),o.msg,done,o.t); }
   }
@@ -573,6 +579,10 @@ function showExport(result){
 
 // ---------- reasoning excavation ----------
 var logExEl=document.getElementById("logx");
+function logFailX(msg){
+  Array.prototype.forEach.call(logExEl.querySelectorAll(".ln.cur"),function(x){x.classList.remove("cur");x.classList.add("err");});
+  var e=document.createElement("div"); e.className="ln err"; e.innerHTML=esc(msg); logExEl.appendChild(e);
+}
 function logStageX(key,msg,done,t){
   var id="lx-"+key, e=document.getElementById(id);
   if(!e){ e=document.createElement("div"); e.id=id; e.className="ln cur"; logExEl.appendChild(e); }
@@ -600,7 +610,7 @@ function runExcav(){
      return pump();
    }).catch(function(e){ logStageX("err","Error: "+e.message,true); finish(); });
   function handle(o){
-    if(o.error){ logStageX("err","⚠ "+o.error,true); return; }
+    if(o.error){ logFailX(o.error); return; }
     if(o.stage==="result"){ renderExcavation(o.result); if(o.result.id){ document.getElementById("exportlinkx").href="/api/export/"+o.result.id; document.getElementById("savedmsgx").textContent="saved · "+o.result.id; document.getElementById("exportbarx").style.display="flex"; } return; }
     if(o.stage){ var done=/done$/.test(o.stage)||o.stage==="start"; logStageX(o.stage.replace(/done$/,""),o.msg,done,o.t); }
   }

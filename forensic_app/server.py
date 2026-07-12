@@ -300,6 +300,50 @@ async def parse_files(files: list[UploadFile] = File(...)):
         out.append({"filename": f.filename, "chars": len(text), "text": text})
     return {"documents": out}
 
+def _pull_events(model):
+    """Ensure `model` is present locally; if not, pull it, yielding {stage,msg} progress dicts.
+    Keeps the one-click promise — the user never runs `ollama pull` by hand and never sees a bare
+    404. A model the dropdown offers but that was never downloaded (only the default is auto-pulled
+    at setup) used to fail Step 0 with 'HTTP Error 404: Not Found'; now it downloads on first use.
+    Raises RuntimeError with a clear message on a genuine pull failure."""
+    import urllib.request, urllib.error
+    base = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    try:
+        with urllib.request.urlopen(base + "/api/tags", timeout=4) as r:
+            have = [m.get("name", "") for m in json.loads(r.read().decode()).get("models", [])]
+        if any(h == model or h == model + ":latest" or h.split(":")[0] == model for h in have):
+            return                                   # already downloaded → nothing to do
+    except Exception:
+        return                                       # Ollama unreachable → let the engine surface it
+    yield {"stage": "pull", "msg": f"First use of {model} — downloading it now. Large models are "
+                                   f"several GB and can take a few minutes; you can leave this running."}
+    req = urllib.request.Request(base + "/api/pull",
+        data=json.dumps({"model": model, "stream": True}).encode(),
+        headers={"Content-Type": "application/json"})
+    last = -1
+    try:
+        with urllib.request.urlopen(req, timeout=3600) as r:
+            for raw in r:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try: d = json.loads(raw.decode())
+                except Exception: continue
+                if d.get("error"):
+                    raise RuntimeError(f"Could not download {model}: {d['error']}")
+                total, done = d.get("total") or 0, d.get("completed") or 0
+                if total:
+                    pct = int(done * 100 / total)
+                    if pct != last and pct % 5 == 0:
+                        last = pct
+                        yield {"stage": "pull",
+                               "msg": f"Downloading {model} — {pct}%  ({done>>20} / {total>>20} MB)"}
+                elif d.get("status"):
+                    yield {"stage": "pull", "msg": f"{model}: {d['status']}"}
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"Could not download '{model}' (HTTP {e.code}). Check the model name is correct.")
+    yield {"stage": "pulldone", "msg": f"{model} is ready — starting the analysis now."}
+
 # ----------------------------------------------------------------- live run (SSE)
 @app.post("/api/run")
 def run_stream(payload: dict):
@@ -319,6 +363,8 @@ def run_stream(payload: dict):
             E.PROFILE = profile
             t0 = time.time()
             yield ev({"stage": "start", "msg": f"Engine starting · {model} · {profile} · blind · local, zero egress"})
+            for e in _pull_events(model):            # auto-download the model on first use
+                yield ev(e)
 
             yield ev({"stage": "p1", "msg": "Pass 1 — reviewing the document..."})
             p1 = _coerce(E.pass_one(deck).get("findings", []))
@@ -389,6 +435,8 @@ def crossdoc(payload: dict):
         return JSONResponse({"error": "another analysis is running"}, status_code=409)
     try:
         _set_model(model)
+        for _e in _pull_events(model):              # auto-download the model on first use
+            pass
         t0 = time.time()
         res = E.cross_document(docs)
         res["docs"] = [d["label"] for d in docs]
@@ -421,6 +469,8 @@ def excavate_stream(payload: dict):
         def worker():
             try:
                 _set_model(model)
+                for e in _pull_events(model):        # auto-download the model on first use
+                    q.put(e)
                 holder["res"] = RE.excavate(text, label, batch=batch,
                                             on_stage=lambda s, m: q.put({"stage": s, "msg": m}))
                 verify_excavation(holder["res"], on_stage=lambda s, m: q.put({"stage": s, "msg": m}))
