@@ -349,15 +349,34 @@ function api(p,opt){ return fetch(p,opt).then(function(r){return r.json();}); }
 
 // ---------- models ----------
 var MODEL_LABELS={
-  "qwen2.5-coder:7b":"Qwen2.5 7B — fast (~30–60s)",
-  "qwen2.5-coder:32b":"Qwen2.5 32B — balanced (~2–3 min)",
-  "L3370B:latest":"Llama 3.3 70B — most accurate (~4–6 min)",
-  "deepseek-r1:32b":"DeepSeek-R1 32B — reasoning (~3–5 min)"
+  "llama3.2:3b":"Llama 3.2 3B — fastest",
+  "qwen2.5-coder:7b":"Qwen2.5 7B — fast",
+  "qwen2.5-coder:32b":"Qwen2.5 32B — balanced",
+  "gpt-oss:20b":"gpt-oss 20B — reasoning",
+  "gemma4:26b":"Gemma 4 26B — most accurate",
+  "L3370B:latest":"Llama 3.3 70B — most accurate",
+  "deepseek-r1:32b":"DeepSeek-R1 32B — reasoning"
 };
+// Per-model typical end-to-end estimate (local, four streamed stages). Big models also carry a
+// one-time download on first use, which is shown separately as a progress bar while it pulls.
+var MODEL_ETA={
+  "llama3.2:3b":"~20–40s",
+  "qwen2.5-coder:7b":"~30–60s",
+  "qwen2.5-coder:32b":"~2–3 min",
+  "gpt-oss:20b":"~2–4 min",
+  "gemma4:26b":"~3–5 min",
+  "L3370B:latest":"~4–6 min",
+  "deepseek-r1:32b":"~3–5 min"
+};
+function isBigModel(m){ return /20b|26b|27b|30b|32b|70b|:latest/i.test(m||""); }
+function modelLabel(m){
+  var base=MODEL_LABELS[m]||m, eta=MODEL_ETA[m];
+  return base+(eta?" ("+eta+(isBigModel(m)?" · +download on 1st use":"")+")":"");
+}
 api("/api/models").then(function(d){
   ["model","modelc","modelx"].forEach(function(id){
     var s=document.getElementById(id); if(!s) return;
-    d.models.forEach(function(m){ var o=document.createElement("option"); o.value=m; o.textContent=MODEL_LABELS[m]||m; s.appendChild(o); });
+    d.models.forEach(function(m){ var o=document.createElement("option"); o.value=m; o.textContent=modelLabel(m); s.appendChild(o); });
   });
 });
 // ---------- document-type profiles (calibrates the analysis framing) ----------
@@ -751,8 +770,10 @@ function finalizeLog(box){
   });
 }
 function etaHint(model){
-  var slow=/70|L33|r1/.test(model||"");
-  var base="Runs in stages, each streamed below. Typical total: "+(slow?"~4–6 min on this model":"~1–2 min on the fast model")+". The timer on the right shows elapsed time for the current stage.";
+  var eta=MODEL_ETA[model], big=isBigModel(model);
+  var total=eta?(eta+" on this model"):(big?"~4–6 min on this model":"~1–2 min on the fast model");
+  var dl=big?" The first run with this model also downloads it (several GB), shown as a progress bar before the stages start." : "";
+  var base="Runs in stages, each streamed below. Typical total: "+total+"."+dl+" The timer on the right shows elapsed time for the current stage.";
   var warn="";
   if(LAST_GPU && LAST_GPU.level==="heavy") warn=" <b style='color:#ffcf7a'>⚠ The shared GPUs are busy right now ("+LAST_GPU.avg_util+"% util) — this run will likely take longer than usual.</b>";
   else if(LAST_GPU && LAST_GPU.level==="moderate") warn=" <span style='color:#ffcf7a'>(server is moderately busy — may run a little slower)</span>";
