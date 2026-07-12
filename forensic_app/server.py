@@ -315,14 +315,21 @@ def _pull_events(model):
             return                                   # already downloaded → nothing to do
     except Exception:
         return                                       # Ollama unreachable → let the engine surface it
-    yield {"stage": "pull", "msg": f"First use of {model} — downloading it now. Large models are "
-                                   f"several GB and can take a few minutes; you can leave this running."}
+    yield {"stage": "pull", "msg": f"First use of {model} — downloading it now (one-time). The size and "
+                                   f"a live speed / time-remaining estimate appear below; you can leave this "
+                                   f"running. A large model on a slow connection can take a while."}
     req = urllib.request.Request(base + "/api/pull",
         data=json.dumps({"model": model, "stream": True}).encode(),
         headers={"Content-Type": "application/json"})
-    last = -1
+
+    def _fmt_eta(sec):
+        if sec >= 5400:  return f"~{sec/3600:.1f} h left"
+        if sec >= 90:    return f"~{round(sec/60)} min left"
+        return f"~{max(1, round(sec))} s left"
+
+    t0 = done0 = None; last_emit = 0.0; last_pct = -1
     try:
-        with urllib.request.urlopen(req, timeout=3600) as r:
+        with urllib.request.urlopen(req, timeout=7200) as r:
             for raw in r:
                 raw = raw.strip()
                 if not raw:
@@ -332,12 +339,22 @@ def _pull_events(model):
                 if d.get("error"):
                     raise RuntimeError(f"Could not download {model}: {d['error']}")
                 total, done = d.get("total") or 0, d.get("completed") or 0
-                if total:
+                if total and done:
+                    now = time.time()
+                    if t0 is None:                       # anchor speed at the first byte-bearing sample
+                        t0, done0 = now, done
                     pct = int(done * 100 / total)
-                    if pct != last and pct % 5 == 0:
-                        last = pct
+                    # update in place at most ~once/2s (or on each 1% change) so speed/ETA refresh live
+                    if pct != last_pct or now - last_emit >= 2:
+                        last_pct, last_emit = pct, now
+                        elapsed = now - t0
+                        rate = (done - done0) / elapsed if elapsed > 0.5 else 0     # bytes/s since anchor
+                        tail = ""
+                        if rate > 0:
+                            mbps = rate / (1 << 20)
+                            tail = f"  ·  {mbps:.1f} MB/s  ·  {_fmt_eta((total - done) / rate)}"
                         yield {"stage": "pull",
-                               "msg": f"Downloading {model} — {pct}%  ({done>>20} / {total>>20} MB)"}
+                               "msg": f"Downloading {model} — {pct}%  ·  {done>>20} / {total>>20} MB{tail}"}
                 elif d.get("status"):
                     yield {"stage": "pull", "msg": f"{model}: {d['status']}"}
     except urllib.error.HTTPError as e:

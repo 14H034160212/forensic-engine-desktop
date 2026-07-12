@@ -772,7 +772,7 @@ function finalizeLog(box){
 function etaHint(model){
   var eta=MODEL_ETA[model], big=isBigModel(model);
   var total=eta?(eta+" on this model"):(big?"~4–6 min on this model":"~1–2 min on the fast model");
-  var dl=big?" The first run with this model also downloads it (several GB), shown as a progress bar before the stages start." : "";
+  var dl=big?" The first run with this model also downloads it (often 10+ GB) — a live size / speed / time-remaining readout appears before the stages start, and it can take a while on a slow connection." : "";
   var base="Runs in stages, each streamed below. Typical total: "+total+"."+dl+" The timer on the right shows elapsed time for the current stage.";
   var warn="";
   if(LAST_GPU && LAST_GPU.level==="heavy") warn=" <b style='color:#ffcf7a'>⚠ The shared GPUs are busy right now ("+LAST_GPU.avg_util+"% util) — this run will likely take longer than usual.</b>";
