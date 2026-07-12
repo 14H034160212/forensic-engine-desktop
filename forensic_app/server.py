@@ -292,6 +292,21 @@ def _accel_from_ollama():
     except Exception:
         return "unknown", None
 
+def _resolve_accel():
+    """Best call on GPU- vs CPU-bound inference, CONSERVATIVE on ambiguity. Ollama's loaded-model
+    size_vram is authoritative; before any model loads we fall back to platform + NVIDIA presence and
+    — the fix for the AMD/no-dGPU case — default to 'cpu' rather than an optimistic 'gpu'/'unknown'
+    when no accelerator is detectable. Better to over-estimate time than promise a wrong fast one."""
+    a, vram = _accel_from_ollama()
+    if a != "unknown":
+        return a, vram
+    if sys.platform == "darwin":
+        return "gpu", vram                       # Apple Silicon → Metal, always GPU-accelerated
+    import shutil
+    if shutil.which("nvidia-smi"):
+        return "gpu", vram                       # NVIDIA present → GPU
+    return "cpu", vram                           # no NVIDIA on Win/Linux → almost certainly CPU-only
+
 @app.get("/api/gpu")
 def gpu():
     """Two jobs. On the shared demo server: live NVIDIA load (reflects all users). On a local laptop
@@ -299,7 +314,7 @@ def gpu():
     nvidia-smi is absent — a missing nvidia-smi is normal (AMD/Intel/Apple), not an error. The two
     used to be one bug: nvidia-smi threw on AMD, so the app never learned it was CPU-only and showed
     GPU-calibrated time estimates that were 10–20× optimistic."""
-    accel, vram = _accel_from_ollama()
+    accel, vram = _resolve_accel()
     base = {"accel": accel, "vram_bytes": vram, "platform": sys.platform, "nvidia": False}
     try:
         out = subprocess.run(
@@ -337,20 +352,24 @@ def estimate(model: str, kind: str = "deck", depth: str = "fast"):
     → precise; (2) another model measured here → scale by relative size; (3) nothing measured → a
     rough band from whether Ollama is on GPU or CPU. Always says which, so the number is never a
     false promise. Self-improving: every completed run rewrites calib.json."""
-    accel, _ = _accel_from_ollama()
+    accel, _ = _resolve_accel()
     calib = _read_calib()
     tok_key = "excavation_deep" if (kind == "excavation" and depth == "deep") else kind
     tokens = TYP_TOKENS.get(tok_key, 4500)
+    # NOMINAL size (from the name), independent of the GPU MoE speed-weight: on CPU a 20B+ model is
+    # slow regardless of active-param tricks (gpt-oss:20b measured ~3 tok/s on CPU), so flag it honestly.
+    nominal_big = model.endswith(":latest") or any(t in model.lower()
+                    for t in ("20b", "26b", "27b", "30b", "32b", "70b"))
 
     def band():
         if accel == "cpu":
-            big = model in SPEED_WEIGHT and SPEED_WEIGHT[model] >= 20
-            if big:  return {"est_s": None, "text": "impractical on CPU (tens of minutes)", "source": "band-cpu", "accel": accel}
-            lo = tokens / (18 if SPEED_WEIGHT.get(model, 7) <= 3 else 9)   # ~3B vs ~7B on CPU
-            return {"est_s": round(lo), "text": _fmt_dur(lo) + "+ on CPU", "source": "band-cpu", "accel": accel}
+            if nominal_big:
+                return {"est_s": None, "text": "impractical on CPU (tens of minutes) — prefer a 3B/7B model", "source": "band-cpu", "accel": accel}
+            lo = tokens / (10 if SPEED_WEIGHT.get(model, 7) <= 3 else 5)   # conservative CPU tok/s (~3B vs ~7B)
+            return {"est_s": round(lo), "text": _fmt_dur(lo) + "+ on CPU (no GPU detected)", "source": "band-cpu", "accel": accel}
         return {"est_s": None, "text": None, "source": "band-gpu", "accel": accel}
 
-    # (1) exact model measured here
+    # (1) exact model measured here — always most accurate, even for a big model the user chose to run
     c = calib.get(model)
     if c and c.get("tok_s"):
         ts = c["tok_s"]
@@ -360,6 +379,10 @@ def estimate(model: str, kind: str = "deck", depth: str = "fast"):
             est = tokens / ts + (c.get("load_s") or 0)
         return {"est_s": round(est), "text": _fmt_dur(est), "tok_s": ts,
                 "source": "measured", "accel": c.get("accel", accel)}
+    # A big model on CPU that hasn't been measured yet → be honest before the user commits to a 40-min run
+    if accel == "cpu" and nominal_big:
+        return {"est_s": None, "text": "impractical on CPU (tens of minutes) — prefer a 3B/7B model",
+                "source": "band-cpu", "accel": accel, "refines": True}
     # (2) scale from the fastest model measured here
     ref = None
     for m, cc in calib.items():

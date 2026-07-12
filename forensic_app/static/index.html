@@ -378,7 +378,7 @@ function modelLabel(m){
 var EST={};
 function fmtEst(e){
   if(!e) return "";
-  var col=(e.accel==="cpu")?"#A9750F":"var(--muted)", body;
+  var col=(e.accel && e.accel!=="gpu")?"#A9750F":"var(--muted)", body;
   if(e.source==="measured")      body="Est. on this machine: <b>"+e.text+"</b> · measured "+e.tok_s+" tok/s";
   else if(e.source==="scaled")   body="Est. run time: <b>"+e.text+"</b>";
   else if(e.source==="band-cpu") body=(e.est_s?"Est. run time: <b>"+e.text+"</b>":"<b>"+e.text+"</b>")+" — no GPU detected"+(e.refines?"; refines after your first run":"");
@@ -505,9 +505,9 @@ function paintGpu(el,g,dark){
 }
 function refreshGpu(){
   api("/api/gpu").then(function(g){
+    if(g && g.accel) LAST_GPU=g;                 // keep accel (gpu/cpu) even when there's no shared-GPU badge
     var ids=["gpu-badge","gpu-excav","gpu-cross"];
-    if(g.error || g.gpus==null){ ids.forEach(function(id){var e=document.getElementById(id);if(e)e.style.display="none";}); return; }
-    LAST_GPU=g;
+    if(!g || g.error || !g.gpus){ ids.forEach(function(id){var e=document.getElementById(id);if(e)e.style.display="none";}); return; }  // no NVIDIA GPUs → no busy badge (local laptop)
     paintGpu(document.getElementById("gpu-badge"),g,true);
     paintGpu(document.getElementById("gpu-excav"),g,false);
     paintGpu(document.getElementById("gpu-cross"),g,false);
@@ -797,7 +797,7 @@ function finalizeLog(box){
   });
 }
 function etaHint(model){
-  var big=isBigModel(model), cpu=(LAST_GPU && LAST_GPU.accel==="cpu");
+  var big=isBigModel(model), cpu=(LAST_GPU && LAST_GPU.accel && LAST_GPU.accel!=="gpu");
   var est=EST["model"]||EST["modelx"];               // machine-specific estimate if we have one
   var total;
   if(est && est.text && est.source!=="band-gpu") total=est.text+(est.source==="measured"?" (measured on this machine)":"");
