@@ -245,9 +245,62 @@ PROFILE_LABELS = [("pitch", "Pitch deck"), ("report", "Report / analysis"),
 def profiles():
     return {"profiles": [{"id": k, "label": v} for k, v in PROFILE_LABELS]}
 
+# --- self-calibrating time estimates -----------------------------------------------------------
+# tok/s is measured on THIS machine and cached per model; workload size (tokens) is a per-kind prior.
+# est ≈ expected_tokens / measured_tok_s + model-load time. A model never run here is estimated by
+# scaling a measured model's speed by relative size; a totally fresh machine gets a rough accel band.
+CALIB = os.path.join(_DATA, "calib.json")
+TYP_TOKENS = {"deck": 4500, "excavation": 5500, "excavation_deep": 12000, "crossdoc": 3000}
+# Relative runtime weight (~ time per token). MoE gpt-oss:20b runs ~3.6B active, so it's weighted
+# well below its 20B nominal; dense models track their parameter count.
+SPEED_WEIGHT = {"llama3.2:3b": 3, "qwen2.5-coder:7b": 7, "qwen2.5-coder:32b": 32,
+                "gpt-oss:20b": 8, "gemma4:26b": 26, "L3370B:latest": 70, "deepseek-r1:32b": 32}
+
+def _read_calib():
+    try: return json.load(open(CALIB, encoding="utf-8"))
+    except Exception: return {}
+
+def _write_calib(model, kind, stats, wall_s, accel):
+    try:
+        c = _read_calib()
+        c[model] = {"tok_s": stats["tok_s"], "gen_tokens": stats["gen_tokens"],
+                    "wall_s": round(wall_s), "load_s": stats["load_seconds"],
+                    "kind": kind, "accel": accel,
+                    "at": datetime.datetime.now().isoformat(timespec="seconds")}
+        json.dump(c, open(CALIB, "w", encoding="utf-8"), indent=2)
+    except Exception:
+        pass
+
+def _fmt_dur(sec):
+    if sec >= 5400: return f"~{sec/3600:.1f} h"
+    if sec >= 90:   return f"~{round(sec/60)} min"
+    return f"~{max(5, int(round(sec/5)*5))}s"
+
+def _accel_from_ollama():
+    """Ask Ollama what it is ACTUALLY running on — the cross-vendor truth, unlike nvidia-smi.
+    A loaded model reports size_vram: >0 means it's on a GPU, ==0 means pure CPU (e.g. an AMD/Intel
+    iGPU that Ollama can't offload to). Returns 'gpu' | 'cpu' | 'unknown' (nothing loaded yet)."""
+    import urllib.request
+    base = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    try:
+        with urllib.request.urlopen(base + "/api/ps", timeout=3) as r:
+            models = json.loads(r.read().decode()).get("models", [])
+        if not models:
+            return "unknown", None
+        vram = sum(m.get("size_vram", 0) for m in models)
+        return ("gpu" if vram > 0 else "cpu"), vram
+    except Exception:
+        return "unknown", None
+
 @app.get("/api/gpu")
 def gpu():
-    """Live GPU load from nvidia-smi — this is a SHARED server, so it reflects all users."""
+    """Two jobs. On the shared demo server: live NVIDIA load (reflects all users). On a local laptop
+    (often no NVIDIA GPU): report the real acceleration Ollama is using, WITHOUT crashing when
+    nvidia-smi is absent — a missing nvidia-smi is normal (AMD/Intel/Apple), not an error. The two
+    used to be one bug: nvidia-smi threw on AMD, so the app never learned it was CPU-only and showed
+    GPU-calibrated time estimates that were 10–20× optimistic."""
+    accel, vram = _accel_from_ollama()
+    base = {"accel": accel, "vram_bytes": vram, "platform": sys.platform, "nvidia": False}
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total",
@@ -266,10 +319,61 @@ def gpu():
         if free >= 2:   level, status = "light", "plenty free"
         elif free == 1: level, status = "moderate", "getting busy"
         else:           level, status = "heavy", "busy"
-        return {"gpus": len(gpus), "free": free, "level": level,
-                "status": status, "avg_util": avg_util}
-    except Exception as e:
-        return {"error": str(e)[:120]}
+        base.update({"gpus": len(gpus), "free": free, "level": level,
+                     "status": status, "avg_util": avg_util, "nvidia": True,
+                     "accel": "gpu" if accel == "unknown" else accel})
+        return base
+    except FileNotFoundError:
+        pass                          # no NVIDIA tooling → laptop/AMD/Apple; not an error
+    except Exception:
+        pass
+    # No NVIDIA GPU. Report acceleration so the UI can warn + show CPU-realistic estimates.
+    base.update({"gpus": 0, "free": 0, "level": None, "status": "no NVIDIA GPU"})
+    return base
+
+@app.get("/api/estimate")
+def estimate(model: str, kind: str = "deck", depth: str = "fast"):
+    """Machine-specific time estimate for a run. Priority: (1) this exact model measured here before
+    → precise; (2) another model measured here → scale by relative size; (3) nothing measured → a
+    rough band from whether Ollama is on GPU or CPU. Always says which, so the number is never a
+    false promise. Self-improving: every completed run rewrites calib.json."""
+    accel, _ = _accel_from_ollama()
+    calib = _read_calib()
+    tok_key = "excavation_deep" if (kind == "excavation" and depth == "deep") else kind
+    tokens = TYP_TOKENS.get(tok_key, 4500)
+
+    def band():
+        if accel == "cpu":
+            big = model in SPEED_WEIGHT and SPEED_WEIGHT[model] >= 20
+            if big:  return {"est_s": None, "text": "impractical on CPU (tens of minutes)", "source": "band-cpu", "accel": accel}
+            lo = tokens / (18 if SPEED_WEIGHT.get(model, 7) <= 3 else 9)   # ~3B vs ~7B on CPU
+            return {"est_s": round(lo), "text": _fmt_dur(lo) + "+ on CPU", "source": "band-cpu", "accel": accel}
+        return {"est_s": None, "text": None, "source": "band-gpu", "accel": accel}
+
+    # (1) exact model measured here
+    c = calib.get(model)
+    if c and c.get("tok_s"):
+        ts = c["tok_s"]
+        if c.get("kind") == kind and c.get("wall_s"):
+            est = c["wall_s"]
+        else:
+            est = tokens / ts + (c.get("load_s") or 0)
+        return {"est_s": round(est), "text": _fmt_dur(est), "tok_s": ts,
+                "source": "measured", "accel": c.get("accel", accel)}
+    # (2) scale from the fastest model measured here
+    ref = None
+    for m, cc in calib.items():
+        if cc.get("tok_s") and m in SPEED_WEIGHT and model in SPEED_WEIGHT:
+            if ref is None or cc["tok_s"] > calib[ref]["tok_s"]:
+                ref = m
+    if ref:
+        pred = calib[ref]["tok_s"] * SPEED_WEIGHT[ref] / SPEED_WEIGHT[model]
+        est = tokens / pred + 8
+        return {"est_s": round(est), "text": _fmt_dur(est) + f" (estimated from your {ref} speed)",
+                "tok_s": round(pred, 1), "source": "scaled", "ref": ref, "accel": accel}
+    # (3) nothing measured yet
+    b = band(); b["refines"] = True
+    return b
 
 DECKS_DIR = os.path.join(HERE, "..", "local_engine", "decks")
 SAMPLES = [("QuickBite", "quickbite", "Anonymised deck of a company that raised $1B and failed"),
@@ -378,10 +482,10 @@ def run_stream(payload: dict):
         try:
             _set_model(model)
             E.PROFILE = profile
-            t0 = time.time()
             yield ev({"stage": "start", "msg": f"Engine starting · {model} · {profile} · blind · local, zero egress"})
             for e in _pull_events(model):            # auto-download the model on first use
                 yield ev(e)
+            E.reset_gen(); t0 = time.time()          # start machine-speed calibration clock
 
             yield ev({"stage": "p1", "msg": "Pass 1 — reviewing the document..."})
             p1 = _coerce(E.pass_one(deck).get("findings", []))
@@ -431,6 +535,8 @@ def run_stream(payload: dict):
                                 "seconds": round(time.time()-t0)}}
             rid = _save_run(result)
             result["id"] = rid
+            gs = E.gen_stats()                       # record this machine's real speed for next time
+            _write_calib(model, "deck", gs, time.time() - t0, _accel_from_ollama()[0])
             yield ev({"stage": "result", "result": result})
         except Exception as e:
             yield ev({"error": str(e)[:300]})
@@ -488,6 +594,7 @@ def excavate_stream(payload: dict):
                 _set_model(model)
                 for e in _pull_events(model):        # auto-download the model on first use
                     q.put(e)
+                E.reset_gen(); holder["t0"] = time.time()   # machine-speed calibration clock
                 holder["res"] = RE.excavate(text, label, batch=batch,
                                             on_stage=lambda s, m: q.put({"stage": s, "msg": m}))
                 verify_excavation(holder["res"], on_stage=lambda s, m: q.put({"stage": s, "msg": m}))
@@ -507,6 +614,8 @@ def excavate_stream(payload: dict):
                 yield ev({"error": holder["err"]}); return
             res = holder["res"]; res["kind"] = "excavation"; res["source_text"] = text
             _save_run(res)
+            if holder.get("t0"):                    # record this machine's real speed for next time
+                _write_calib(model, "excavation", E.gen_stats(), time.time() - holder["t0"], _accel_from_ollama()[0])
             yield ev({"stage": "result", "result": res})
         finally:
             RUN_LOCK.release()

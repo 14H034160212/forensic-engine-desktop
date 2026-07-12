@@ -373,11 +373,38 @@ function modelLabel(m){
   var base=MODEL_LABELS[m]||m, eta=MODEL_ETA[m];
   return base+(eta?" ("+eta+(isBigModel(m)?" · +download on 1st use":"")+")":"");
 }
+// Machine-specific run-time estimate: measured on THIS laptop and cached per model, so it adapts to
+// any hardware instead of a one-size-fits-all number. Priority is measured → size-scaled → accel band.
+var EST={};
+function fmtEst(e){
+  if(!e) return "";
+  var col=(e.accel==="cpu")?"#A9750F":"var(--muted)", body;
+  if(e.source==="measured")      body="Est. on this machine: <b>"+e.text+"</b> · measured "+e.tok_s+" tok/s";
+  else if(e.source==="scaled")   body="Est. run time: <b>"+e.text+"</b>";
+  else if(e.source==="band-cpu") body=(e.est_s?"Est. run time: <b>"+e.text+"</b>":"<b>"+e.text+"</b>")+" — no GPU detected"+(e.refines?"; refines after your first run":"");
+  else                           body=e.refines?"Estimate will calibrate after your first run on this machine":"";
+  return body?("<span style='color:"+col+"'>⏱ "+body+"</span>"):"";
+}
+function refreshEst(sel,kind,depthSel){
+  var s=document.getElementById(sel); if(!s||!s.value) return;
+  var note=document.getElementById(sel+"-est");
+  if(!note){ note=document.createElement("div"); note.id=sel+"-est";
+    note.style.cssText="font-family:var(--mono);font-size:11.5px;line-height:1.5;margin:7px 0 0";
+    (s.parentNode||s).appendChild(note); }
+  var depth=depthSel?((document.getElementById(depthSel)||{}).value||"fast"):"fast";
+  api("/api/estimate?model="+encodeURIComponent(s.value)+"&kind="+kind+"&depth="+depth)
+    .then(function(e){ EST[sel]=e; note.innerHTML=fmtEst(e); }).catch(function(){});
+}
 api("/api/models").then(function(d){
   ["model","modelc","modelx"].forEach(function(id){
     var s=document.getElementById(id); if(!s) return;
     d.models.forEach(function(m){ var o=document.createElement("option"); o.value=m; o.textContent=modelLabel(m); s.appendChild(o); });
   });
+  var pairs=[["model","deck",null],["modelx","excavation","depthx"],["modelc","crossdoc",null]];
+  pairs.forEach(function(p){ var s=document.getElementById(p[0]); if(!s) return;
+    s.addEventListener("change",function(){ refreshEst(p[0],p[1],p[2]); });
+    refreshEst(p[0],p[1],p[2]); });
+  var dx=document.getElementById("depthx"); if(dx) dx.addEventListener("change",function(){ refreshEst("modelx","excavation","depthx"); });
 });
 // ---------- document-type profiles (calibrates the analysis framing) ----------
 api("/api/profiles").then(function(d){
@@ -584,7 +611,7 @@ function runSingle(){
    }).catch(function(e){ logStage("err","Error: "+e.message,true); finish(); });
   function handle(o){
     if(o.error){ logFail(o.error); return; }
-    if(o.stage==="result"){ render(o.result); showExport(o.result); return; }
+    if(o.stage==="result"){ render(o.result); showExport(o.result); refreshEst("model","deck",null); refreshGpu(); return; }
     if(o.stage){ var done=/done$/.test(o.stage)||o.stage==="start"; logStage(o.stage.replace(/done$/,""),o.msg,done,o.t); }
   }
   function finish(){ finalizeLog(logEl); btn.disabled=false; btn.textContent="Run analysis ▸"; }
@@ -630,7 +657,7 @@ function runExcav(){
    }).catch(function(e){ logStageX("err","Error: "+e.message,true); finish(); });
   function handle(o){
     if(o.error){ logFailX(o.error); return; }
-    if(o.stage==="result"){ renderExcavation(o.result); if(o.result.id){ document.getElementById("exportlinkx").href="/api/export/"+o.result.id; document.getElementById("savedmsgx").textContent="saved · "+o.result.id; document.getElementById("exportbarx").style.display="flex"; } return; }
+    if(o.stage==="result"){ renderExcavation(o.result); if(o.result.id){ document.getElementById("exportlinkx").href="/api/export/"+o.result.id; document.getElementById("savedmsgx").textContent="saved · "+o.result.id; document.getElementById("exportbarx").style.display="flex"; } refreshEst("modelx","excavation","depthx"); refreshGpu(); return; }
     if(o.stage){ var done=/done$/.test(o.stage)||o.stage==="start"; logStageX(o.stage.replace(/done$/,""),o.msg,done,o.t); }
   }
   function finish(){ finalizeLog(logExEl); btn.disabled=false; btn.textContent="Excavate ▸"; }
@@ -770,12 +797,16 @@ function finalizeLog(box){
   });
 }
 function etaHint(model){
-  var eta=MODEL_ETA[model], big=isBigModel(model);
-  var total=eta?(eta+" on this model"):(big?"~4–6 min on this model":"~1–2 min on the fast model");
+  var big=isBigModel(model), cpu=(LAST_GPU && LAST_GPU.accel==="cpu");
+  var est=EST["model"]||EST["modelx"];               // machine-specific estimate if we have one
+  var total;
+  if(est && est.text && est.source!=="band-gpu") total=est.text+(est.source==="measured"?" (measured on this machine)":"");
+  else { var eta=MODEL_ETA[model]; total=eta?(eta+" on this model"):(big?"~4–6 min on this model":"~1–2 min on the fast model"); }
   var dl=big?" The first run with this model also downloads it (often 10+ GB) — a live size / speed / time-remaining readout appears before the stages start, and it can take a while on a slow connection." : "";
   var base="Runs in stages, each streamed below. Typical total: "+total+"."+dl+" The timer on the right shows elapsed time for the current stage.";
   var warn="";
-  if(LAST_GPU && LAST_GPU.level==="heavy") warn=" <b style='color:#ffcf7a'>⚠ The shared GPUs are busy right now ("+LAST_GPU.avg_util+"% util) — this run will likely take longer than usual.</b>";
+  if(cpu) warn=" <b style='color:#ffcf7a'>⚠ No GPU acceleration detected — analysis runs on the CPU and is much slower"+(big?"; a 20B+ model is impractical on this machine (tens of minutes per run) — prefer a 3B/7B model":"")+".</b>";
+  else if(LAST_GPU && LAST_GPU.level==="heavy") warn=" <b style='color:#ffcf7a'>⚠ The shared GPUs are busy right now ("+LAST_GPU.avg_util+"% util) — this run will likely take longer than usual.</b>";
   else if(LAST_GPU && LAST_GPU.level==="moderate") warn=" <span style='color:#ffcf7a'>(server is moderately busy — may run a little slower)</span>";
   return "<div class='ln' style='opacity:.75'>"+base+warn+"</div>";
 }

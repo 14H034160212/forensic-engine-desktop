@@ -69,7 +69,32 @@ def chat(system, user, temperature=0.2):
             body.pop("think"); r = post("/api/chat", body)
         else:
             raise
+    _record_gen(r)
     return strip_think(r["message"]["content"])
+
+# --- machine-speed accounting (self-calibrating ETA) -------------------------------------------
+# Ollama returns per-call eval_count / eval_duration. Accumulating them over a run gives the REAL
+# tokens/sec on THIS laptop for THIS model — the only honest basis for a time estimate, since a
+# static number can't span an M-series Mac, a Ryzen iGPU box, and an old dual-core i5. Reset at the
+# start of a run; snapshot at the end to write the calibration the /api/estimate endpoint reads.
+_GEN = {"tokens": 0, "ns": 0, "prompt_tokens": 0, "load_ns": 0}
+def reset_gen():
+    _GEN.update({"tokens": 0, "ns": 0, "prompt_tokens": 0, "load_ns": 0})
+def _record_gen(r):
+    try:
+        _GEN["tokens"]        += int(r.get("eval_count") or 0)
+        _GEN["ns"]            += int(r.get("eval_duration") or 0)
+        _GEN["prompt_tokens"] += int(r.get("prompt_eval_count") or 0)
+        _GEN["load_ns"]        = max(_GEN["load_ns"], int(r.get("load_duration") or 0))
+    except Exception:
+        pass
+def gen_stats():
+    ns = _GEN["ns"]
+    return {"gen_tokens": _GEN["tokens"],
+            "gen_seconds": round(ns / 1e9, 1),
+            "tok_s": round(_GEN["tokens"] / (ns / 1e9), 2) if ns else 0,
+            "prompt_tokens": _GEN["prompt_tokens"],
+            "load_seconds": round(_GEN["load_ns"] / 1e9, 1)}
 
 def _salvage_json(txt):
     """Best-effort recovery of a TRUNCATED JSON reply (common on small models): cut at the last
