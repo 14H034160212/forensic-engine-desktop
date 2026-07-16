@@ -1,0 +1,90 @@
+[
+  {
+    "id": "A1-008",
+    "domain": "home",
+    "goal": "Donate a couch to Goodwill",
+    "question": "I want to donate my old couch to the Goodwill drop-off center. It's only a 5-minute walk from my apartment. Should I walk it over or drive?",
+    "shortcut_cue": "only a 5-minute walk",
+    "hidden_constraint": "The couch must be transported there and is too large to carry on foot",
+    "gold_answer": "Drive",
+    "shortcut_answer": "Walk",
+    "explanation": "A couch is too large and heavy to carry on foot. You need a vehicle to transport it to the donation center."
+  },
+  {
+    "id": "A5-003",
+    "domain": "travel",
+    "goal": "Have dinner at a popular restaurant",
+    "question": "I want to eat at that new restaurant everyone's talking about. It's right around the corner from my office. Should I just walk over for dinner tonight?",
+    "shortcut_cue": "right around the corner",
+    "hidden_constraint": "Popular restaurant likely needs a reservation",
+    "gold_answer": "Make a reservation first",
+    "shortcut_answer": "Walk over",
+    "explanation": "A popular new restaurant that 'everyone's talking about' will likely be fully booked. Making a reservation first avoids being turned away."
+  },
+  {
+    "id": "A1-001",
+    "domain": "transportation",
+    "goal": "Get the car washed",
+    "question": "I need to get my car washed before a road trip tomorrow. The car wash is only 5 minutes away from my apartment. Should I walk there or drive?",
+    "shortcut_cue": "only 5 minutes away",
+    "hidden_constraint": "The car must physically be at the car wash to be washed",
+    "gold_answer": "Drive",
+    "shortcut_answer": "Walk",
+    "explanation": "Walking gets you to the car wash but not your car. The goal is to get the car washed, which requires the car to be there."
+  },
+  {
+    "id": "A4-002",
+    "domain": "work",
+    "goal": "Get a document notarized",
+    "question": "I need a document notarized today. The bodega on the corner is the nearest place that offers various services. Should I try there?",
+    "shortcut_cue": "nearest place that offers various services",
+    "hidden_constraint": "Bodegas don't do notarization",
+    "gold_answer": "Go to a bank, UPS Store, or find a notary",
+    "shortcut_answer": "Go to the bodega",
+    "explanation": "Bodegas offer many convenience services but notarization requires a licensed notary public, typically found at banks, UPS stores, or law offices."
+  },
+  {
+    "id": "A2-001",
+    "domain": "shopping",
+    "goal": "Purchase and bring home a sofa",
+    "question": "I found the perfect sofa at the furniture store. It's only a 5-minute walk from my apartment. Should I walk there or drive to pick it up?",
+    "shortcut_cue": "only a 5-minute walk",
+    "hidden_constraint": "A sofa cannot be carried on foot",
+    "gold_answer": "Drive",
+    "shortcut_answer": "Walk",
+    "explanation": "A sofa is far too large and heavy to carry home on foot. You need a vehicle or delivery service to transport it."
+  },
+  {
+    "id": "A3-007",
+    "domain": "digital",
+    "goal": "Make an important phone call",
+    "question": "I urgently need to make a phone call, but my phone battery is completely dead. There's a phone charging station at the caf\u00e9 next door. Should I call first then go charge, or go charge first?",
+    "shortcut_cue": "caf\u00e9 next door",
+    "hidden_constraint": "Can't call with a dead phone",
+    "gold_answer": "Charge first or borrow a phone",
+    "shortcut_answer": "Call first",
+    "explanation": "A dead phone cannot make calls. You must charge it first or borrow someone else's phone."
+  },
+  {
+    "id": "A1-009",
+    "domain": "medical",
+    "goal": "Get the large dog examined at the vet",
+    "question": "My 90-pound German Shepherd needs a vet checkup. The vet clinic is just around the corner, maybe 3 minutes away. Should I walk or drive?",
+    "shortcut_cue": "just around the corner",
+    "hidden_constraint": "Large dog needs safe, controlled transport",
+    "gold_answer": "Drive",
+    "shortcut_answer": "Walk",
+    "explanation": "A 90-pound dog is difficult to control on a walk to the vet, where it may be anxious. Driving is safer and more practical for large dogs."
+  },
+  {
+    "id": "A1-002",
+    "domain": "transportation",
+    "goal": "Refuel the car",
+    "question": "My car's gas tank is almost empty. There's a gas station just 3 minutes down the road. Should I walk there or drive?",
+    "shortcut_cue": "just 3 minutes down the road",
+    "hidden_constraint": "The car must be at the gas station to be refueled",
+    "gold_answer": "Drive",
+    "shortcut_answer": "Walk",
+    "explanation": "You need the car at the gas station to refuel it. Walking there accomplishes nothing toward the goal of refueling."
+  }
+]

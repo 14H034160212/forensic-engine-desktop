@@ -8,7 +8,7 @@ conflict detection, run history, and PDF export. Zero external calls.
 Run:  cd forensic_app && uvicorn server:app --host 127.0.0.1 --port 8800
 Open: http://127.0.0.1:8800/   (SSH-tunnel the port for a private remote demo)
 """
-import os, sys, json, time, threading, datetime, io, queue, subprocess
+import os, sys, json, time, threading, datetime, io, queue, subprocess, re
 # Resource dir (read-only bundled files) vs data dir (writable). Frozen-aware so the same
 # server runs from source AND inside a PyInstaller/Tauri native bundle.
 if getattr(sys, "frozen", False):
@@ -397,6 +397,74 @@ def estimate(model: str, kind: str = "deck", depth: str = "fast"):
     # (3) nothing measured yet
     b = band(); b["refines"] = True
     return b
+
+# ----------------------------------------------------------------- Heuristic Override demo (why-it-works)
+# A live before/after: the SAME model on the SAME question, once asked plainly and once asked to first
+# enumerate the implicit feasibility constraint (the engine's core mechanism). Data: HOB (Li et al. 2026,
+# MIT). This is an explainer of WHY the approach works — a third-party benchmark, distinct from the product.
+_HOB_PATH = os.path.join(HERE, "hob_samples.json")
+
+def _hob_chat(model, prompt):
+    import urllib.request
+    base = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    body = {"model": model, "stream": False,
+            "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 400},
+            "messages": [{"role": "user", "content": prompt}]}
+    data = json.dumps(body).encode()
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(base + "/api/chat", data=data, headers={"Content-Type": "application/json"})
+            r = json.load(urllib.request.urlopen(req, timeout=300))
+            c = (r.get("message") or {}).get("content", "")
+            if c and c.strip():
+                return c
+        except Exception:
+            pass
+        time.sleep(0.5 * (attempt + 1))
+    return ""
+
+def _hob_pick(text, a, b):
+    m = re.findall(r"ANSWER:\s*\(?\s*([AB])\b", text or "", re.I)
+    letter = (m[-1].upper() if m else None)
+    if not letter:
+        low = (text or "").lower(); ai, bi = low.rfind(a.lower()), low.rfind(b.lower())
+        if ai != bi: letter = "A" if ai > bi else "B"
+    return letter
+
+@app.get("/api/hob/samples")
+def hob_samples():
+    try:
+        return {"samples": json.load(open(_HOB_PATH, encoding="utf-8"))}
+    except Exception:
+        return {"samples": []}
+
+@app.post("/api/hob/run")
+def hob_run(payload: dict):
+    """Run one heuristic-override item through the SAME model twice (plain vs constraint-enumeration)."""
+    model = payload.get("model") or MODELS[0]
+    goal = (payload.get("goal") or "").strip()
+    q = (payload.get("question") or "").strip()
+    gold = (payload.get("gold_answer") or "").strip()
+    sc = (payload.get("shortcut_answer") or "").strip()
+    if not (q and gold and sc):
+        return JSONResponse({"error": "need question, gold_answer, shortcut_answer"}, status_code=400)
+    import random as _r
+    opts = [gold, sc]; _r.Random(q).shuffle(opts); a, b = opts
+    head = f"{q}\n\nTwo options:\n(A) {a}\n(B) {b}\n"
+    p_plain = head + f"\nWhich option achieves the stated goal \"{goal}\"? Reply with ONLY: ANSWER: A  (or)  ANSWER: B"
+    p_con = (head + f"\nFirst, in one line, state the implicit real-world constraint the goal \"{goal}\" "
+             f"actually requires (what must physically/logically be true). Then decide. "
+             f"Final line EXACTLY: ANSWER: A  (or)  ANSWER: B")
+    def one(prompt):
+        raw = _hob_chat(model, prompt)
+        letter = _hob_pick(raw, a, b)
+        chosen = a if letter == "A" else b if letter == "B" else None
+        return {"raw": raw, "choice": chosen, "correct": (chosen == gold) if chosen else None}
+    plain, con = one(p_plain), one(p_con)
+    return {"model": model, "gold": gold, "shortcut": sc,
+            "hidden_constraint": payload.get("hidden_constraint", ""),
+            "explanation": payload.get("explanation", ""),
+            "plain": plain, "constraint": con}
 
 DECKS_DIR = os.path.join(HERE, "..", "local_engine", "decks")
 SAMPLES = [("QuickBite", "quickbite", "Anonymised deck of a company that raised $1B and failed"),

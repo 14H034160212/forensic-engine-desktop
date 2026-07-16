@@ -11,6 +11,7 @@ python -m PyInstaller --onefile --name ForensicEngine ^
   --paths "%R%\forensic_app" --paths "%R%\local_engine" ^
   --add-data "%R%\forensic_app\static;forensic_app/static" ^
   --add-data "%R%\forensic_app\VERSION;forensic_app" ^
+  --add-data "%R%\forensic_app\hob_samples.json;forensic_app" ^
   --add-data "%R%\local_engine\decks;local_engine/decks" ^
   --hidden-import pdfplumber --hidden-import pypdf --hidden-import docx --hidden-import multipart ^
   --collect-all pdfminer --collect-submodules uvicorn ^

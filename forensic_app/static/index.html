@@ -120,6 +120,8 @@
     <a id="nav-new" class="on" onclick="showView('new')">New analysis</a>
     <a id="nav-excav" onclick="showView('excav')">Reasoning excavation</a>
     <a id="nav-cross" onclick="showView('cross')">Cross-document</a>
+    <div class="grp">Why it works</div>
+    <a id="nav-hob" onclick="showView('hob');loadHob()">Heuristic override</a>
     <div class="grp">Library</div>
     <a id="nav-hist" onclick="showView('hist');loadHistory()">History</a>
     <div class="grp">Run it locally</div>
@@ -206,6 +208,27 @@
       <p class="eyebrow">Run history</p>
       <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 14px">Saved analyses</h1>
       <div class="hist" id="histlist"></div>
+    </div>
+
+    <!-- HEURISTIC OVERRIDE (why-it-works demo) -->
+    <div class="view" id="view-hob">
+      <p class="eyebrow">Why the approach works · live</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Heuristic override</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 14px">LLMs fail when a salient surface cue (“it's only 5&nbsp;minutes away”) overrides an unstated feasibility constraint (“the car has to be there”). The engine's core move is to <b>enumerate the hidden constraint first</b>. Same model, same question — the only difference is that one step.</p>
+      <div class="verdict" style="margin:0 0 16px">
+        <h4>Measured on a third-party benchmark we didn't build</h4>
+        <p>HOB — 500 items, Li et al. 2026 (MIT). Adding the constraint-enumeration step lifts accuracy:</p>
+        <p style="margin-top:8px">&bull; <b>llama3.2:3b</b> &nbsp; 75.1% &rarr; <b>89.0%</b> &nbsp; <span style="color:#9FE3DE">(+13.9 pp)</span><br>
+        &bull; <b>qwen2.5-coder:7b</b> &nbsp; 71.3% &rarr; <b>78.0%</b> &nbsp; <span style="color:#9FE3DE">(+6.7 pp)</span></p>
+      </div>
+      <div class="picker" style="margin:0 0 10px">
+        <label>Model</label><select id="modelh"></select>
+        <button class="tab" onclick="runHob()" id="hobrun" style="border-color:var(--accent);background:var(--accent);color:#fff">Run before / after ▸</button>
+      </div>
+      <div id="hobchips" class="chips" style="margin:0 0 14px"></div>
+      <div id="hobstate" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:0 0 12px"></div>
+      <div id="hobout"></div>
+      <p style="color:var(--muted);font-size:12px;margin:18px 0 0">A single run is stochastic (temperature 0, but models vary run to run) — the robust signal is the aggregate above, over all 500 items. Pick a bigger model and it resists the trap more on its own; that's the point — the constraint step is what a small, cheap, local model needs to reason like a larger one. Benchmark: Li, Zhang, Jiang, Krishnan &amp; Padman (2026), HOB, MIT licence.</p>
     </div>
 
   </div></div>
@@ -338,11 +361,70 @@ function render(D){
 // ---------- state + nav ----------
 var ST={ newDocs:[], crossDocs:[], xDocs:[] };
 function showView(v){
-  ["new","excav","cross","hist"].forEach(function(x){
-    document.getElementById("view-"+x).classList.toggle("on",x===v);
-    document.getElementById("nav-"+x).classList.toggle("on",x===v);
+  ["new","excav","cross","hist","hob"].forEach(function(x){
+    var vw=document.getElementById("view-"+x), nv=document.getElementById("nav-"+x);
+    if(vw) vw.classList.toggle("on",x===v);
+    if(nv) nv.classList.toggle("on",x===v);
   });
 }
+
+// ---------- Heuristic override demo ----------
+var HOB_SAMPLES=[], HOB_SEL=0, HOB_MODELS_READY=false;
+function loadHob(){
+  var sel=document.getElementById("modelh");
+  if(sel && !HOB_MODELS_READY){
+    api("/api/models").then(function(d){
+      (d.models||[]).forEach(function(m){var o=document.createElement("option");o.value=m;o.textContent=modelLabel(m);sel.appendChild(o);});
+      // default to a small model where the effect is visible, if present
+      var small=(d.models||[]).find(function(m){return /llama3\.2:3b|:3b|:7b/.test(m);});
+      if(small) sel.value=small;
+      HOB_MODELS_READY=true;
+    }).catch(function(){});
+  }
+  if(HOB_SAMPLES.length){ return; }
+  api("/api/hob/samples").then(function(d){
+    HOB_SAMPLES=d.samples||[]; var box=document.getElementById("hobchips"); box.innerHTML="";
+    HOB_SAMPLES.forEach(function(s,i){
+      var c=el("span","chip"+(i===0?" on":""), esc(s.domain)+" · "+esc(s.shortcut_cue||s.goal));
+      c.style.cursor="pointer"; c.onclick=function(){HOB_SEL=i;
+        Array.prototype.forEach.call(box.children,function(x,j){x.classList.toggle("on",j===i);});};
+      box.appendChild(c);
+    });
+  }).catch(function(){});
+}
+function hobCard(title, side, ok, raw, sub){
+  var color = ok===true?"var(--ok)":ok===false?"var(--fail)":"var(--muted)";
+  var mark  = ok===true?"✓ correct":ok===false?"✗ fooled by the surface cue":"—";
+  return "<div style='flex:1;min-width:260px;background:var(--panel);border:1px solid var(--rule);border-top:3px solid "+color+";border-radius:6px;padding:14px'>"+
+    "<div style='font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)'>"+title+"</div>"+
+    "<div style='font-family:var(--serif);font-size:18px;margin:4px 0 2px'>"+esc(side||"—")+"</div>"+
+    "<div style='font-family:var(--mono);font-size:12px;color:"+color+";margin-bottom:8px'>"+mark+"</div>"+
+    (sub?"<div style='font-size:12.5px;color:var(--muted);white-space:pre-wrap'>"+esc(sub)+"</div>":"")+"</div>";
+}
+function runHob(){
+  if(!HOB_SAMPLES.length){ return; }
+  var s=HOB_SAMPLES[HOB_SEL], model=document.getElementById("modelh").value;
+  var btn=document.getElementById("hobrun"); btn.disabled=true; var oldt=btn.textContent; btn.textContent="Running…";
+  document.getElementById("hobstate").textContent="Running the same question twice on "+model+" — plain, then with constraint-enumeration…";
+  document.getElementById("hobout").innerHTML="";
+  api("/api/hob/run",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:model,goal:s.goal,question:s.question,gold_answer:s.gold_answer,
+        shortcut_answer:s.shortcut_answer,hidden_constraint:s.hidden_constraint,explanation:s.explanation})})
+   .then(function(r){
+     if(r.error){ document.getElementById("hobstate").textContent="⚠ "+r.error; return; }
+     document.getElementById("hobstate").innerHTML="<b>Question:</b> "+esc(s.question);
+     var conSub = (r.hidden_constraint?("Constraint it surfaced: "+r.hidden_constraint+"\n\n"):"")+trimReason(r.constraint.raw);
+     var html="<div style='display:flex;gap:12px;flex-wrap:wrap'>"+
+       hobCard("Plain — “the model says walk”", r.plain.choice, r.plain.correct, r.plain.raw, trimReason(r.plain.raw))+
+       hobCard("With constraint-enumeration (the engine's move)", r.constraint.choice, r.constraint.correct, r.constraint.raw, conSub)+
+       "</div>"+
+       "<div class='verdict' style='margin-top:12px'><h4>The trap</h4><p>Surface cue: <b>"+esc(s.shortcut_cue)+"</b> → pulls toward “"+esc(r.shortcut)+"”. "+
+       "Hidden constraint: <b>"+esc(s.hidden_constraint)+"</b> → the goal actually needs “"+esc(r.gold)+"”.</p></div>";
+     document.getElementById("hobout").innerHTML=html;
+   }).catch(function(e){ document.getElementById("hobstate").textContent="⚠ run failed"; })
+   .finally(function(){ btn.disabled=false; btn.textContent=oldt; });
+}
+function trimReason(t){ t=(t||"").trim(); return t.length>420?t.slice(0,420)+"…":t; }
 // inject the ngrok skip-warning header on every request so API/stream calls never hit the interstitial
 (function(){ var _f=window.fetch; window.fetch=function(u,o){ o=o||{}; o.headers=Object.assign({"ngrok-skip-browser-warning":"true"}, o.headers||{}); return _f.call(window,u,o); }; })();
 function api(p,opt){ return fetch(p,opt).then(function(r){return r.json();}); }
