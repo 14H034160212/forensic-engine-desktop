@@ -120,6 +120,7 @@
     <a id="nav-new" class="on" onclick="showView('new')">New analysis</a>
     <a id="nav-excav" onclick="showView('excav')">Reasoning excavation</a>
     <a id="nav-cross" onclick="showView('cross')">Cross-document</a>
+    <a id="nav-graph" onclick="showView('graph');loadGraphView()">Decision Graph</a>
     <div class="grp">Why it works</div>
     <a id="nav-hob" onclick="showView('hob');loadHob()">Heuristic override</a>
     <div class="grp">Library</div>
@@ -229,6 +230,42 @@
       <div id="hobstate" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:0 0 12px"></div>
       <div id="hobout"></div>
       <p style="color:var(--muted);font-size:12px;margin:18px 0 0">A single run is stochastic (temperature 0, but models vary run to run) — the robust signal is the aggregate above, over all 500 items. Pick a bigger model and it resists the trap more on its own; that's the point — the constraint step is what a small, cheap, local model needs to reason like a larger one. Benchmark: Li, Zhang, Jiang, Krishnan &amp; Padman (2026), HOB, MIT licence.</p>
+    </div>
+
+    <!-- DECISION GRAPH -->
+    <div class="view" id="view-graph">
+      <p class="eyebrow">Tarski 2 preview · document → decision graph</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Decision Graph</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 14px">Turn a document into a navigable reasoning landscape — the decision, the claims it rests on, the dependencies between them, and the internal contradictions. Click any node to see everything connected to it; the rest recedes.</p>
+      <div class="picker" style="margin:0 0 10px">
+        <label>Model</label><select id="modelg"></select>
+        <button class="tab" id="gsample" style="cursor:pointer">Load sample memo</button>
+        <button class="tab" onclick="buildGraph()" id="gbuild" style="border-color:var(--accent);background:var(--accent);color:#fff">Build graph ▸</button>
+      </div>
+      <div class="drop" id="gdrop" onclick="document.getElementById('gfile').click()" style="padding:16px;margin:0 0 8px">
+        <div class="big" style="font-size:15px">Drop a PDF / Word / text document, or click to choose</div>
+        <div class="sm">or paste below</div>
+      </div>
+      <input type="file" id="gfile" style="display:none" accept=".pdf,.docx,.txt">
+      <textarea id="gtext" placeholder="…or paste document text here" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--rule);border-radius:6px;font-family:var(--sans);font-size:13px;margin:0 0 10px"></textarea>
+      <div id="gstate" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:0 0 8px"></div>
+      <div id="gwrap" style="display:none">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+          <div style="flex:2;min-width:320px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;overflow:hidden">
+            <svg id="gsvg" viewBox="0 0 800 560" style="width:100%;height:560px;display:block;cursor:grab"></svg>
+          </div>
+          <div id="gdetail" style="flex:1;min-width:220px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:14px;font-size:13.5px;color:var(--muted)">Click a node to inspect it.</div>
+        </div>
+        <div class="legend" style="display:flex;gap:20px;flex-wrap:wrap;font-size:12.5px;color:#33474f;margin:10px 2px 0">
+          <span><b style="color:#0E6E78">■</b> decision</span>
+          <span><b style="color:#3A5A6B">■</b> claim</span>
+          <span><b style="color:#A9750F">■</b> assumption</span>
+          <span><b style="color:#B3261E">■</b> risk</span>
+          <span><b style="color:#B3261E">◉</b> shared dependency (single point of failure)</span>
+          <span><span style="color:#B3261E">– –</span> contradiction</span>
+        </div>
+      </div>
+      <p style="color:var(--muted);font-size:12px;margin:16px 0 0">The engine keeps the underlying model rich but shows the smallest view that changes the decision — not a hairball. Runs locally; every node traces to its source. Preview of the Tarski 2 Decision Graph.</p>
     </div>
 
   </div></div>
@@ -361,7 +398,7 @@ function render(D){
 // ---------- state + nav ----------
 var ST={ newDocs:[], crossDocs:[], xDocs:[] };
 function showView(v){
-  ["new","excav","cross","hist","hob"].forEach(function(x){
+  ["new","excav","cross","hist","hob","graph"].forEach(function(x){
     var vw=document.getElementById("view-"+x), nv=document.getElementById("nav-"+x);
     if(vw) vw.classList.toggle("on",x===v);
     if(nv) nv.classList.toggle("on",x===v);
@@ -425,6 +462,102 @@ function runHob(){
    .finally(function(){ btn.disabled=false; btn.textContent=oldt; });
 }
 function trimReason(t){ t=(t||"").trim(); return t.length>420?t.slice(0,420)+"…":t; }
+
+// ---------- Decision Graph (Tarski 2 preview) ----------
+var GRAPH=null, GRAPH_READY=false;
+var BANK_SAMPLE="CREDIT COMMITTEE MEMORANDUM — CONFIDENTIAL (illustrative / synthetic)\nFacility: £45m senior secured term loan + £10m revolving credit facility\nBorrower: Meridian Logistics Group Ltd (mid-market UK 3PL / warehousing)\nRecommendation: APPROVE, subject to covenants below\n\n1. TRANSACTION SUMMARY\nWe recommend a £45m 5-year senior secured term loan and a £10m RCF to refinance existing bank debt (£38m) and fund two new automated distribution centres. Security: first-ranking debenture; the two new DCs are the principal collateral.\n\n2. KEY METRICS (borrower projections)\n- FY25 EBITDA £11.2m; FY26E EBITDA £15.8m (+41%), driven mainly by the two new DCs.\n- Opening net leverage 3.9x. Covenant: net debt/EBITDA <= 4.0x.\n- Projected leverage FY26: 2.8x. Interest cover 3.1x at close, rising to 4.4x.\n- 70% bullet at maturity (year 5).\n\n3. BASIS OF EBITDA GROWTH\nThe 41% jump assumes both new DCs at 85% utilisation by Q3 FY26. DC-2 is currently 4 months behind schedule; management expects to recover the time. Utilisation is underpinned by a single anchor contract with a major grocery retailer (38% of projected new-DC revenue).\n\n4. REFINANCING\nThe 70% bullet will be refinanced at maturity; projections assume a comparable margin.\n\n5. COLLATERAL\nThe two new DCs are valued at £52m on a completed basis, assuming the automation fit-out is complete and the anchor tenant is in occupation. LTV at close is 87% against completed value.\n\n6. INTEREST RATE\nProjections use a flat forward SONIA curve. The group has no interest rate hedging in place, yet cover of 3.1x is described as \"comfortable headroom.\"\n\n7. COVENANT HEADROOM\nHeadroom is described as \"ample.\" Opening leverage is 3.9x against a 4.0x covenant.\n\n8. MANAGEMENT\nThe team is \"highly experienced,\" which the memo treats as mitigating execution risk on the automation build-out.\n\n9. RECOMMENDATION\nOn the projected deleveraging to 2.8x, the experienced team and the secured collateral, we recommend approval.";
+
+function loadGraphView(){
+  var sel=document.getElementById("modelg");
+  if(sel && !GRAPH_READY){
+    api("/api/models").then(function(d){
+      (d.models||[]).forEach(function(m){var o=document.createElement("option");o.value=m;o.textContent=modelLabel(m);sel.appendChild(o);});
+      var big=(d.models||[]).find(function(m){return /gemma4|:32b|:27b|:30b/.test(m);}); if(big) sel.value=big;
+      GRAPH_READY=true;
+    }).catch(function(){});
+    document.getElementById("gsample").addEventListener("click",function(){ document.getElementById("gtext").value=BANK_SAMPLE; document.getElementById("gstate").textContent="Sample credit memo loaded — click Build graph."; });
+    var gf=document.getElementById("gfile");
+    gf.addEventListener("change",function(){ var f=gf.files[0]; if(!f)return; var fd=new FormData(); fd.append("files",f);
+      document.getElementById("gstate").textContent="Reading "+f.name+"…";
+      fetch("/api/parse",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(d){
+        var t=(d.documents&&d.documents[0]&&d.documents[0].text)||""; document.getElementById("gtext").value=t;
+        document.getElementById("gstate").textContent=f.name+" — "+t.length+" chars. Click Build graph."; }); });
+    var dz=document.getElementById("gdrop");
+    ["dragover","dragenter"].forEach(function(ev){dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.add("hover");});});
+    ["dragleave","drop"].forEach(function(ev){dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.remove("hover");});});
+    dz.addEventListener("drop",function(e){ if(e.dataTransfer.files[0]){ gf.files=e.dataTransfer.files; gf.dispatchEvent(new Event("change")); } });
+  }
+}
+function buildGraph(){
+  var text=(document.getElementById("gtext").value||"").trim();
+  if(!text){ alert("Drop a document, paste text, or load the sample first."); return; }
+  var model=document.getElementById("modelg").value;
+  var btn=document.getElementById("gbuild"); btn.disabled=true; var ot=btn.textContent; btn.textContent="Building…";
+  document.getElementById("gstate").textContent="Extracting the reasoning graph with "+model+" — can take up to a minute on a large model…";
+  api("/api/graph/build",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:text,model:model})})
+   .then(function(r){
+     if(r.error){ document.getElementById("gstate").textContent="⚠ "+r.error; return; }
+     document.getElementById("gwrap").style.display="block";
+     document.getElementById("gstate").innerHTML="<b>Decision:</b> "+esc(r.decision||"—")+"  ·  "+r.nodes.length+" nodes, "+r.edges.length+" links";
+     renderGraph(r);
+   }).catch(function(){ document.getElementById("gstate").textContent="⚠ build failed"; })
+   .finally(function(){ btn.disabled=false; btn.textContent=ot; });
+}
+function layoutGraph(nodes,edges,W,H){
+  nodes.forEach(function(n,idx){ var a=idx/nodes.length*2*Math.PI; n.x=W/2+Math.cos(a)*W/4; n.y=H/2+Math.sin(a)*H/4; n.vx=0; n.vy=0; });
+  var idmap={}; nodes.forEach(function(n){idmap[n.id]=n;});
+  var K=190;
+  for(var iter=0; iter<320; iter++){
+    for(var i=0;i<nodes.length;i++){ for(var j=i+1;j<nodes.length;j++){
+      var a=nodes[i], b=nodes[j], dx=a.x-b.x, dy=a.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1, f=(K*K)/(d*d), ux=dx/d, uy=dy/d;
+      a.vx+=ux*f; a.vy+=uy*f; b.vx-=ux*f; b.vy-=uy*f; }}
+    edges.forEach(function(e){ var a=idmap[e.from], b=idmap[e.to]; if(!a||!b)return;
+      var dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy)||1, f=(d-K)*0.02, ux=dx/d, uy=dy/d;
+      a.vx+=ux*f; a.vy+=uy*f; b.vx-=ux*f; b.vy-=uy*f; });
+    nodes.forEach(function(n){ n.vx+=(W/2-n.x)*0.004; n.vy+=(H/2-n.y)*0.004;
+      n.x+=Math.max(-28,Math.min(28,n.vx)); n.y+=Math.max(-28,Math.min(28,n.vy)); n.vx*=0.85; n.vy*=0.85; });
+  }
+  var pad=78; nodes.forEach(function(n){ n.x=Math.max(pad,Math.min(W-pad,n.x)); n.y=Math.max(pad,Math.min(H-pad,n.y)); });
+}
+function renderGraph(g){
+  var W=800,H=560, svg=document.getElementById("gsvg"); svg.setAttribute("viewBox","0 0 "+W+" "+H);
+  layoutGraph(g.nodes,g.edges,W,H);
+  var idmap={}; g.nodes.forEach(function(n){idmap[n.id]=n;});
+  var KIND={decision:"#0E6E78",claim:"#3A5A6B",assumption:"#A9750F",risk:"#B3261E"};
+  var p=['<defs><marker id="arr" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#8598a3"/></marker><marker id="arrR" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#B3261E"/></marker></defs>'];
+  g.edges.forEach(function(e){ var a=idmap[e.from], b=idmap[e.to]; if(!a||!b)return; var con=e.type==="contradicts";
+    p.push('<line class="ge" data-a="'+esc(e.from)+'" data-b="'+esc(e.to)+'" x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'" stroke="'+(con?"#B3261E":"#8598a3")+'" stroke-width="'+(con?1.8:1.6)+'"'+(con?' stroke-dasharray="5,4"':'')+' marker-end="url(#'+(con?'arrR':'arr')+')"/>'); });
+  g.nodes.forEach(function(n){ var c=KIND[n.kind]||"#3A5A6B", w=Math.max(66,Math.min(156,30+n.label.length*6)), h=36;
+    var s='<g class="gn" data-id="'+esc(n.id)+'" transform="translate('+n.x+','+n.y+')">';
+    s+='<rect x="'+(-w/2)+'" y="'+(-h/2)+'" rx="8" width="'+w+'" height="'+h+'" fill="#fff" stroke="'+c+'" stroke-width="'+(n.spof?3:1.6)+'"/>';
+    if(n.spof) s+='<circle cx="'+(w/2-3)+'" cy="'+(-h/2+3)+'" r="4.5" fill="#B3261E"/>';
+    var wds=(n.label||"").split(" "), l1="",l2="";
+    wds.forEach(function(x){ if(!l1||(l1+" "+x).length<=15) l1=(l1?l1+" ":"")+x; else l2=(l2?l2+" ":"")+x; });
+    if(l2){ s+='<text text-anchor="middle" y="-3" font-size="10" font-family="system-ui" fill="'+c+'">'+esc(l1)+'</text><text text-anchor="middle" y="10" font-size="10" font-family="system-ui" fill="'+c+'">'+esc(l2)+'</text>'; }
+    else { s+='<text text-anchor="middle" y="4" font-size="10.5" font-family="system-ui" fill="'+c+'">'+esc(l1)+'</text>'; }
+    s+='</g>'; p.push(s); });
+  svg.innerHTML=p.join("");
+  Array.prototype.forEach.call(svg.querySelectorAll(".gn"),function(el){ el.style.cursor="pointer";
+    el.addEventListener("click",function(ev){ ev.stopPropagation(); focusNode(g, el.getAttribute("data-id")); }); });
+  svg.onclick=function(){ clearFocus(); };
+  GRAPH=g;
+}
+function focusNode(g,id){
+  var idmap={}; g.nodes.forEach(function(n){idmap[n.id]=n;});
+  var nb={}; nb[id]=1; var conn=[];
+  g.edges.forEach(function(e){ if(e.from===id){nb[e.to]=1; conn.push(e);} if(e.to===id){nb[e.from]=1; conn.push(e);} });
+  var svg=document.getElementById("gsvg");
+  Array.prototype.forEach.call(svg.querySelectorAll(".gn"),function(el){ el.style.opacity=nb[el.getAttribute("data-id")]?1:0.14; });
+  Array.prototype.forEach.call(svg.querySelectorAll(".ge"),function(el){ var on=(el.getAttribute("data-a")===id||el.getAttribute("data-b")===id); el.style.opacity=on?1:0.07; el.setAttribute("stroke-width",on?2.6:1.4); });
+  var n=idmap[id];
+  var rel=conn.map(function(e){ var o=e.from===id?e.to:e.from; var dir=e.type==="contradicts"?"⚔ contradicts":(e.from===id?"→ supports":"← rests on"); return "<li style='margin:2px 0'>"+dir+" <b>"+esc(idmap[o].label)+"</b></li>"; }).join("");
+  document.getElementById("gdetail").innerHTML="<div style='font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)'>"+esc(n.kind)+(n.spof?" · single point of failure":"")+"</div><div style='font-family:var(--serif);font-size:16px;color:var(--text);margin:3px 0 6px'>"+esc(n.label)+"</div><div style='margin-bottom:8px;color:#33474f'>"+esc(n.detail||"")+"</div><ul style='padding-left:16px;margin:0;color:#33474f'>"+rel+"</ul>";
+}
+function clearFocus(){ var svg=document.getElementById("gsvg"); if(!svg)return;
+  Array.prototype.forEach.call(svg.querySelectorAll(".gn"),function(el){el.style.opacity=1;});
+  Array.prototype.forEach.call(svg.querySelectorAll(".ge"),function(el){el.style.opacity=1; el.setAttribute("stroke-width",1.6);});
+  var dp=document.getElementById("gdetail"); if(dp) dp.innerHTML="Click a node to inspect it."; }
+
 // inject the ngrok skip-warning header on every request so API/stream calls never hit the interstitial
 (function(){ var _f=window.fetch; window.fetch=function(u,o){ o=o||{}; o.headers=Object.assign({"ngrok-skip-browser-warning":"true"}, o.headers||{}); return _f.call(window,u,o); }; })();
 function api(p,opt){ return fetch(p,opt).then(function(r){return r.json();}); }

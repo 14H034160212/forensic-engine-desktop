@@ -466,6 +466,67 @@ def hob_run(payload: dict):
             "explanation": payload.get("explanation", ""),
             "plain": plain, "constraint": con}
 
+# ----------------------------------------------------------------- Decision Graph (Tarski 2 preview)
+# Turn a document into the SMALLEST navigable reasoning landscape: decision + claims + the assumptions
+# they rest on + dependencies + contradictions. Rendered client-side (no server graphviz), so it works
+# identically in the hosted demo and the fully-local app.
+_GRAPH_SYS = ("You are a reasoning-graph extractor for a Deep Reasoning Engine. Given a document, output "
+    "the SMALLEST graph that captures its load-bearing reasoning — the core decision or thesis, the key "
+    "claims, the assumptions they depend on, and the dependencies and contradictions between them. "
+    "Favour clarity over completeness: at most 12 nodes. Surface any SINGLE assumption that several "
+    "branches secretly share (a hidden single point of failure). Output STRICT JSON only, no prose.")
+
+def _graph_prompt(text):
+    return (f"DOCUMENT:\n{text[:12000]}\n\n"
+        "Return STRICT JSON with this shape:\n"
+        '{"decision":"<the core decision/thesis in one line>",'
+        '"nodes":[{"id":"n1","label":"<=6 words","kind":"decision|claim|assumption|risk",'
+        '"detail":"one sentence, quoting the document where possible"}],'
+        '"edges":[{"from":"n1","to":"n2","type":"depends|supports|contradicts"}]}\n'
+        "Rules: exactly one node with kind 'decision'. 'depends'/'supports' edges point FROM the "
+        "supporting claim/assumption TO what it supports (ending at the decision). 'contradicts' edges "
+        "join two nodes in genuine tension (e.g. a stated comfort vs a disclosed fact). Include the "
+        "load-bearing dependencies and every clear internal contradiction. 8-12 nodes is ideal.")
+
+def _clean_graph(g):
+    nodes = [n for n in (g.get("nodes") or []) if isinstance(n, dict) and n.get("id")][:16]
+    ids = {n["id"] for n in nodes}
+    for n in nodes:
+        n["kind"] = n.get("kind") if n.get("kind") in ("decision", "claim", "assumption", "risk") else "claim"
+        n["label"] = str(n.get("label") or n["id"])[:64]
+        n["detail"] = str(n.get("detail") or "")[:280]
+    edges = [e for e in (g.get("edges") or [])
+             if isinstance(e, dict) and e.get("from") in ids and e.get("to") in ids
+             and e.get("from") != e.get("to")]
+    for e in edges:
+        e["type"] = e.get("type") if e.get("type") in ("depends", "supports", "contradicts") else "depends"
+    # mark shared-dependency single points of failure (a node ≥2 outgoing depend/support edges)
+    from collections import Counter
+    out = Counter(e["from"] for e in edges if e["type"] in ("depends", "supports"))
+    for n in nodes:
+        n["spof"] = out.get(n["id"], 0) >= 2 and n["kind"] in ("assumption", "risk")
+    return {"decision": str(g.get("decision") or "")[:200], "nodes": nodes, "edges": edges}
+
+@app.post("/api/graph/build")
+def graph_build(payload: dict):
+    text = (payload.get("deck") or payload.get("text") or "").strip()
+    model = payload.get("model") or MODELS[0]
+    if not text:
+        return JSONResponse({"error": "empty document"}, status_code=400)
+    if not _acquire_run():
+        return JSONResponse({"error": "another analysis is running — try again in a moment"}, status_code=409)
+    try:
+        _set_model(model)
+        for _e in _pull_events(model):
+            pass
+        g = E.chat_json(_GRAPH_SYS, _graph_prompt(text))
+        if not isinstance(g, dict) or not g.get("nodes"):
+            return JSONResponse({"error": "could not extract a graph from this document"}, status_code=422)
+        out = _clean_graph(g); out["model"] = model
+        return out
+    finally:
+        RUN_LOCK.release()
+
 DECKS_DIR = os.path.join(HERE, "..", "local_engine", "decks")
 SAMPLES = [("QuickBite", "quickbite", "Anonymised deck of a company that raised $1B and failed"),
            ("Human & the Engine", "human_and_the_engine", "An essay/argument document (not a deck) — good for the report profile")]
