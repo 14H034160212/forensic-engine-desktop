@@ -125,7 +125,7 @@
     <div class="grp">Why it works</div>
     <a id="nav-hob" onclick="showView('hob');loadHob()">Heuristic override</a>
     <a id="nav-why" onclick="showView('why')">Why not OpenAI</a>
-    <a id="nav-lead" onclick="location.href='/leaderboard'">Model benchmark</a>
+    <a id="nav-lead" onclick="showView('bench')">Model benchmark</a>
     <div class="grp">Library</div>
     <a id="nav-hist" onclick="showView('hist');loadHistory()">History</a>
     <div class="grp">Run it locally</div>
@@ -309,6 +309,30 @@
       <p style="color:var(--muted);font-size:12px;margin:16px 0 0">Runs locally; nothing leaves the machine. Takes ~1–3 min depending on the model and document length.</p>
     </div>
 
+
+    <!-- BENCHMARK (explainer) -->
+    <div class="view" id="view-bench">
+      <p class="eyebrow">Why it works · measured</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Even frontier models fail forensic reasoning</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 16px">The thesis rests on one measurable claim — strong models, on their own, fail at deep forensic reasoning, and the fix is architectural. We built a systematic evaluation to test it rather than assert it: expert answer keys from three real cases plus held-out docs (<b>63 expert-marked flaws</b>), temperature 0, a fixed strong judge, <b>~36 open models</b>.</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin:0 0 16px">
+        <div style="flex:1;min-width:150px;background:var(--panel);border:1px solid var(--rule);border-top:3px solid #B3261E;border-radius:6px;padding:14px;text-align:center">
+          <div style="font-family:var(--serif);font-size:30px;color:#B3261E;line-height:1">15%</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">a blind frontier-grade pipeline — flaws it caught</div></div>
+        <div style="flex:1;min-width:150px;background:var(--panel);border:1px solid var(--rule);border-top:3px solid #B3261E;border-radius:6px;padding:14px;text-align:center">
+          <div style="font-family:var(--serif);font-size:30px;color:#B3261E;line-height:1">0 / 8</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">a frontier model (Grok) rated an 8-fatal-flaw trial “excellent”</div></div>
+        <div style="flex:1;min-width:150px;background:var(--panel);border:1px solid var(--rule);border-top:3px solid #177A63;border-radius:6px;padding:14px;text-align:center">
+          <div style="font-family:var(--serif);font-size:30px;color:#177A63;line-height:1">73%</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">the engine, same cases — the architecture closes the gap</div></div>
+      </div>
+      <div class="verdict" style="margin:0 0 10px"><h4>Strong models fail on their own</h4><p>A blind pipeline caught only 15% of an expert's load-bearing flaws. Independent third-party evidence agrees: on the <b>HOB benchmark</b> (14 models incl. OpenAI's o-series) <b>no model exceeds 75%</b>, and two 2025 papers (<i>Inverse Scaling in Test-Time Compute</i>; Apple's <i>Illusion of Thinking</i>) show more reasoning can make analysis <i>worse</i>.</p></div>
+      <div class="verdict" style="margin:0 0 10px"><h4>The engine, not the model, closes the gap</h4><p>Recall goes 15% → 73% — and the lever is the encoded expert rulebook and routing, <b>not</b> the model: across ~36 models the recall spread is only a few points. Scaling the model is not the lever; the architecture is.</p></div>
+      <div class="verdict" style="margin:0 0 12px"><h4>Representative examples</h4><p>• <b>Car-wash</b> — "only 5 minutes away, walk or drive?" The model says walk; the car has to be there.<br>• <b>The 10-week trial</b> — eight fatal design flaws a frontier model called "excellent"; the engine recovers them.<br>• <b>The $1B deck</b> — unit-economics that collapse under the deck's own numbers, caught by deterministic arithmetic regardless of model size.</p></div>
+      <a onclick="location.href='/leaderboard'" style="display:inline-block;background:var(--accent);color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:600;cursor:pointer">Open the full live leaderboard →</a>
+      <p style="color:var(--muted);font-size:12px;margin:14px 0 0">Honest scope: we systematically benchmarked open-weight models we run locally; the frontier-model evidence is our own Grok reference plus independent third-party benchmarks (HOB — Li et al. 2026; Inverse Scaling in Test-Time Compute 2025; Apple, Illusion of Thinking 2025). Recall carries ±3–4 measurement noise; the direction is robust.</p>
+    </div>
+
   </div></div>
 </div>
 <script>
@@ -439,7 +463,7 @@ function render(D){
 // ---------- state + nav ----------
 var ST={ newDocs:[], crossDocs:[], xDocs:[] };
 function showView(v){
-  ["new","excav","cross","hist","hob","graph","audit","why"].forEach(function(x){
+  ["new","excav","cross","hist","hob","graph","audit","why","bench"].forEach(function(x){
     var vw=document.getElementById("view-"+x), nv=document.getElementById("nav-"+x);
     if(vw) vw.classList.toggle("on",x===v);
     if(nv) nv.classList.toggle("on",x===v);
