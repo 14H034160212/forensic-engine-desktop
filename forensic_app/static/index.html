@@ -121,8 +121,11 @@
     <a id="nav-excav" onclick="showView('excav')">Reasoning excavation</a>
     <a id="nav-cross" onclick="showView('cross')">Cross-document</a>
     <a id="nav-graph" onclick="showView('graph');loadGraphView()">Decision Graph</a>
+    <a id="nav-audit" onclick="showView('audit');loadAuditView()">Pre-flight audit</a>
     <div class="grp">Why it works</div>
     <a id="nav-hob" onclick="showView('hob');loadHob()">Heuristic override</a>
+    <a id="nav-why" onclick="showView('why')">Why not OpenAI</a>
+    <a id="nav-lead" onclick="location.href='/leaderboard'">Model benchmark</a>
     <div class="grp">Library</div>
     <a id="nav-hist" onclick="showView('hist');loadHistory()">History</a>
     <div class="grp">Run it locally</div>
@@ -250,6 +253,10 @@
       <textarea id="gtext" placeholder="…or paste document text here" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--rule);border-radius:6px;font-family:var(--sans);font-size:13px;margin:0 0 10px"></textarea>
       <div id="gstate" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:0 0 8px"></div>
       <div id="gwrap" style="display:none">
+        <div style="display:flex;gap:8px;margin:0 0 10px">
+          <button class="tab" onclick="exportGraphPng()" style="cursor:pointer">⬇ PNG</button>
+          <button class="tab" onclick="exportGraphSvg()" style="cursor:pointer">⬇ SVG (vector)</button>
+        </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
           <div style="flex:2;min-width:320px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;overflow:hidden">
             <svg id="gsvg" viewBox="0 0 800 560" style="width:100%;height:560px;display:block;cursor:grab"></svg>
@@ -266,6 +273,40 @@
         </div>
       </div>
       <p style="color:var(--muted);font-size:12px;margin:16px 0 0">The engine keeps the underlying model rich but shows the smallest view that changes the decision — not a hairball. Runs locally; every node traces to its source. Preview of the Tarski 2 Decision Graph.</p>
+    </div>
+
+    <!-- WHY NOT OPENAI (static explainer) -->
+    <div class="view" id="view-why">
+      <p class="eyebrow">Why it works · defensibility</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Why won't OpenAI just build this?</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 16px">The reframe first: OpenAI is a <b>supplier, not a competitor</b>. Tarski runs on top of any model and sits in the trust and governance layer <i>above</i> it — every model improvement is a tailwind. Four reasons the frontier labs won't, and can't easily, take this space:</p>
+      <div class="verdict" style="margin:0 0 10px"><h4>1 · The problem is orthogonal to model scale</h4><p>A bigger model doesn't fix it. On an independent 500-question benchmark, scaling / "more thinking" gave a statistically insignificant <b>+1.8pp</b>, while the engine's constraint-enumeration step gave <b>+7–14pp</b> — and two further papers (<i>Inverse Scaling in Test-Time Compute</i>; Apple's <i>Illusion of Thinking</i>) show more reasoning can make analysis <i>worse</i>. The fix is architectural, not a larger chat model.</p></div>
+      <div class="verdict" style="margin:0 0 10px"><h4>2 · It is adversarial to their business</h4><p>OpenAI sells "trust the fluent answer." Tarski sells the opposite — <i>don't trust it, prove it.</i> A product whose headline is "LLMs produce confident, wrong, high-stakes reasoning" cuts against their brand and their one-prompt demo culture.</p></div>
+      <div class="verdict" style="margin:0 0 10px"><h4>3 · They're locked out of the best buyers — and the data</h4><p>Banks, government, legal and pharma legally cannot send sensitive decisions to a hosted cloud. Tarski runs <b>fully local, zero-egress</b>. And the moat compounds on the customer's <i>private</i> failure corpus and decision graph — data that by design never leaves the customer, so OpenAI can never train on or reproduce it.</p></div>
+      <div class="verdict" style="margin:0 0 10px"><h4>4 · Frontier labs don't win the system-of-record</h4><p>Infrastructure commoditises; durable value accrues one layer up — Bloomberg, Palantir, Epic and Veeva all sit on top of models and compute someone else made. Enterprise trust, workflow, compliance and accumulated data beat raw model access.</p></div>
+      <div class="verdict" style="margin:0 0 10px"><h4>Defence in depth</h4><p>A granted US patent with a <b>2019 priority</b> on the exact interaction surface (its own worked example — surface only the nodes needed to derive a conclusion — is Tarski's core operation); AkoMaps, field-proven at WHO / World Bank scale; and the cognitive-design craft of the smallest clear view, not a hairball. No single one is the moat; together, a rival must rebuild the whole governed environment, not just the engine.</p></div>
+      <p style="color:var(--muted);font-size:12px;margin:14px 0 0">In one line: a better model doesn't produce Tarski, because Tarski is <i>not</i> a model — it's the auditable, local, governed reasoning layer a better model still needs, for the buyers that model can't reach.</p>
+    </div>
+
+    <!-- PRE-FLIGHT AUDIT (internal tool) -->
+    <div class="view" id="view-audit">
+      <p class="eyebrow">Internal tool · pre-flight</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Pre-flight audit</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 14px">Drop or paste a document — the engine returns a ranked fix-list: the load-bearing issues, contradictions and unsupported claims a reviewer (or a VC's diligence team) would raise, before it goes out. Same engine, framed as a checklist.</p>
+      <div class="picker" style="margin:0 0 10px">
+        <label>Model</label><select id="modela"></select>
+        <button class="tab" onclick="runAudit()" id="abuild" style="border-color:var(--accent);background:var(--accent);color:#fff">Run audit ▸</button>
+      </div>
+      <div class="drop" id="adrop" onclick="document.getElementById('afile').click()" style="padding:16px;margin:0 0 8px">
+        <div class="big" style="font-size:15px">Drop a PDF / Word / text document, or click to choose</div>
+        <div class="sm">or paste below</div>
+      </div>
+      <input type="file" id="afile" style="display:none" accept=".pdf,.docx,.txt">
+      <textarea id="atext" placeholder="…or paste document text here" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--rule);border-radius:6px;font-family:var(--sans);font-size:13px;margin:0 0 8px"></textarea>
+      <div id="astate" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:0 0 6px"></div>
+      <div class="log" id="alog" style="margin:0 0 12px"></div>
+      <div id="aout"></div>
+      <p style="color:var(--muted);font-size:12px;margin:16px 0 0">Runs locally; nothing leaves the machine. Takes ~1–3 min depending on the model and document length.</p>
     </div>
 
   </div></div>
@@ -398,7 +439,7 @@ function render(D){
 // ---------- state + nav ----------
 var ST={ newDocs:[], crossDocs:[], xDocs:[] };
 function showView(v){
-  ["new","excav","cross","hist","hob","graph"].forEach(function(x){
+  ["new","excav","cross","hist","hob","graph","audit","why"].forEach(function(x){
     var vw=document.getElementById("view-"+x), nv=document.getElementById("nav-"+x);
     if(vw) vw.classList.toggle("on",x===v);
     if(nv) nv.classList.toggle("on",x===v);
@@ -557,6 +598,105 @@ function clearFocus(){ var svg=document.getElementById("gsvg"); if(!svg)return;
   Array.prototype.forEach.call(svg.querySelectorAll(".gn"),function(el){el.style.opacity=1;});
   Array.prototype.forEach.call(svg.querySelectorAll(".ge"),function(el){el.style.opacity=1; el.setAttribute("stroke-width",1.6);});
   var dp=document.getElementById("gdetail"); if(dp) dp.innerHTML="Click a node to inspect it."; }
+
+// ---------- Decision Graph export (PNG + vector SVG, self-contained) ----------
+function serializeGraph(){
+  var svg=document.getElementById("gsvg"); if(!svg) return null;
+  var vb=(svg.getAttribute("viewBox")||"0 0 800 560").split(/\s+/), w=+vb[2], h=+vb[3];
+  var clone=svg.cloneNode(true);
+  clone.setAttribute("width",w); clone.setAttribute("height",h);
+  clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
+  return {s:new XMLSerializer().serializeToString(clone), w:w, h:h};
+}
+function dlBlob(blob,name){
+  var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},120);
+}
+function exportGraphSvg(){
+  var g=serializeGraph(); if(!g) return;
+  dlBlob(new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n'+g.s],{type:"image/svg+xml"}),"decision-graph.svg");
+}
+function exportGraphPng(){
+  var g=serializeGraph(); if(!g) return;
+  var scale=2, img=new Image();
+  img.onload=function(){
+    var c=document.createElement("canvas"); c.width=g.w*scale; c.height=g.h*scale;
+    var ctx=c.getContext("2d"); ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,c.width,c.height);
+    ctx.setTransform(scale,0,0,scale,0,0); ctx.drawImage(img,0,0);
+    c.toBlob(function(b){ if(b) dlBlob(b,"decision-graph.png"); });
+  };
+  img.onerror=function(){ alert("Export failed — try SVG."); };
+  img.src="data:image/svg+xml;base64,"+btoa(unescape(encodeURIComponent(g.s)));
+}
+
+// ---------- Pre-flight audit (reuses the /api/run engine, renders a ranked fix-list) ----------
+var AUDIT_READY=false;
+function loadAuditView(){
+  var sel=document.getElementById("modela");
+  if(sel && !AUDIT_READY){
+    api("/api/models").then(function(d){
+      (d.models||[]).forEach(function(m){var o=document.createElement("option");o.value=m;o.textContent=modelLabel(m);sel.appendChild(o);});
+      var big=(d.models||[]).find(function(m){return /gemma4|:32b|:27b/.test(m);}); if(big) sel.value=big;
+      AUDIT_READY=true;
+    }).catch(function(){});
+    var af=document.getElementById("afile");
+    af.addEventListener("change",function(){ var f=af.files[0]; if(!f)return; var fd=new FormData(); fd.append("files",f);
+      document.getElementById("astate").textContent="Reading "+f.name+"…";
+      fetch("/api/parse",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(d){
+        var t=(d.documents&&d.documents[0]&&d.documents[0].text)||""; document.getElementById("atext").value=t;
+        document.getElementById("astate").textContent=f.name+" — "+t.length+" chars. Click Run audit."; }); });
+    var dz=document.getElementById("adrop");
+    ["dragover","dragenter"].forEach(function(ev){dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.add("hover");});});
+    ["dragleave","drop"].forEach(function(ev){dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.remove("hover");});});
+    dz.addEventListener("drop",function(e){ if(e.dataTransfer.files[0]){ af.files=e.dataTransfer.files; af.dispatchEvent(new Event("change")); } });
+  }
+}
+function runAudit(){
+  var text=(document.getElementById("atext").value||"").trim();
+  if(!text){ alert("Drop a document or paste text first."); return; }
+  var model=document.getElementById("modela").value;
+  var btn=document.getElementById("abuild"); btn.disabled=true; var ot=btn.textContent; btn.textContent="Running…";
+  document.getElementById("aout").innerHTML="";
+  var log=document.getElementById("alog"); log.className="log on"; log.innerHTML="";
+  document.getElementById("astate").textContent="Auditing with "+model+" — this can take 1–3 min…";
+  fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deck:text,model:model,label:"Pre-flight audit",profile:"report"})})
+   .then(function(r){
+     var rd=r.body.getReader(), dec=new TextDecoder(), buf="";
+     function pump(){ return rd.read().then(function(res){
+       if(res.done) return;
+       buf+=dec.decode(res.value,{stream:true});
+       var parts=buf.split("\n\n"); buf=parts.pop();
+       parts.forEach(function(p){ p=p.trim(); if(p.indexOf("data:")!==0)return; var o; try{o=JSON.parse(p.slice(5).trim());}catch(e){return;} handleAudit(o,log); });
+       return pump();
+     }); }
+     return pump();
+   }).catch(function(){ document.getElementById("astate").textContent="⚠ audit failed"; })
+   .finally(function(){ btn.disabled=false; btn.textContent=ot; });
+}
+function handleAudit(o,log){
+  if(o.error){ var e=el("div","ln err",esc(o.error)); log.appendChild(e); return; }
+  if(o.stage==="result"){ document.getElementById("astate").textContent=""; renderFixList(o.result); return; }
+  if(o.stage&&o.msg){
+    var cur=log.querySelector(".ln.cur"); if(cur){cur.classList.remove("cur");cur.classList.add("done");}
+    var done=/done$/.test(o.stage)||o.stage==="start";
+    log.appendChild(el("div","ln "+(done?"done":"cur"),esc(o.msg)));
+  }
+}
+function renderFixList(R){
+  var integ=R.integration||{}, items=integ.ranked_register||[];
+  var SEV={Fatal:["#B3261E","●"],Severe:["#A9750F","●"],Material:["#A9750F","●"],Minor:["#5A6B78","○"]};
+  var html="";
+  if(integ.executive_summary) html+="<div class='verdict'><h4>Overall</h4><p>"+esc(integ.executive_summary)+"</p></div>";
+  html+="<h2 style='font-family:var(--serif);margin:14px 0 6px'>Fix-list — "+items.length+" issue"+(items.length===1?"":"s")+", most severe first</h2>";
+  if(!items.length) html+="<p style='color:var(--muted)'>No load-bearing issues surfaced — the document holds up.</p>";
+  items.forEach(function(x,i){ var s=SEV[x.severity]||["#5A6B78","•"];
+    html+="<div style='background:var(--panel);border:1px solid var(--rule);border-left:3px solid "+s[0]+";border-radius:0 6px 6px 0;padding:11px 14px;margin:7px 0'>"+
+      "<div style='font-weight:600;font-size:14.5px'><span style='font-family:var(--mono);font-size:11px;color:"+s[0]+"'>"+s[1]+" "+esc(x.severity||"")+"</span> &nbsp;"+esc(x.title||("Issue "+(i+1)))+"</div>"+
+      (x.why_it_matters?"<div style='font-size:13.5px;color:var(--muted);margin-top:3px'>"+esc(x.why_it_matters)+"</div>":"")+"</div>";
+  });
+  document.getElementById("aout").innerHTML=html;
+}
+
 
 // inject the ngrok skip-warning header on every request so API/stream calls never hit the interstitial
 (function(){ var _f=window.fetch; window.fetch=function(u,o){ o=o||{}; o.headers=Object.assign({"ngrok-skip-browser-warning":"true"}, o.headers||{}); return _f.call(window,u,o); }; })();
