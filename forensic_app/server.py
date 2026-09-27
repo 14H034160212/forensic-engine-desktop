@@ -60,6 +60,17 @@ def _set_model(model):
 
 app = FastAPI(title="Forensic Engine")
 
+# Learning DRE (Tarski Deep Reasoning Engine) — same shell, same local Ollama, second application of
+# the deep-reasoning core. Mounted as an optional module; if its package isn't present the rest of the
+# app is unaffected.
+try:
+    import dre_api
+    dre_api.register_dre(app, HERE, _DATA)
+    DRE_AVAILABLE = True
+except Exception as _dre_e:
+    DRE_AVAILABLE = False
+    print(f"[dre] not mounted: {_dre_e}", flush=True)
+
 # ----------------------------------------------------------------- helpers
 def _coerce(fs):
     for f in fs:

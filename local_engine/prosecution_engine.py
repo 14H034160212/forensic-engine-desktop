@@ -2,7 +2,7 @@
 """
 Automated 2-Pass Blind Forensic Prosecution Engine
 ==================================================
-Reproduces, in code, Kerry's manual two-stage method:
+Reproduces, in code, an expert's manual two-stage method:
 
   Pass 1  – prosecutor reads the SURFACE deck text and catalogues every weakness,
             error, misleading statement, internal contradiction and execution risk.
@@ -21,7 +21,7 @@ FULLY LOCAL / ZERO EGRESS: runs entirely against a local Ollama daemon. No third
 API, nothing sent off the machine — the privacy moat is the architecture.
 
 Usage:
-  LLM_MODEL=deepseek-r1:32b python3 prosecution_engine.py decks/psyscale.txt PsyScale
+  LLM_MODEL=deepseek-r1:32b python3 prosecution_engine.py decks/quickbite.txt QuickBite
 """
 import json, urllib.request, os, sys, time, re
 
@@ -601,7 +601,7 @@ def run(deck_path, label):
     return out
 
 if __name__ == "__main__":
-    deck_path = sys.argv[1] if len(sys.argv) > 1 else "decks/psyscale.txt"
+    deck_path = sys.argv[1] if len(sys.argv) > 1 else "decks/quickbite.txt"
     label = sys.argv[2] if len(sys.argv) > 2 else os.path.basename(deck_path).split(".")[0]
     result = run(deck_path, label)
     os.makedirs("prosecution_out", exist_ok=True)

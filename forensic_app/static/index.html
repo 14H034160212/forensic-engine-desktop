@@ -122,6 +122,8 @@
     <a id="nav-cross" onclick="showView('cross')">Cross-document</a>
     <a id="nav-graph" onclick="showView('graph');loadGraphView()">Decision Graph</a>
     <a id="nav-audit" onclick="showView('audit');loadAuditView()">Pre-flight audit</a>
+    <div class="grp">Learning DRE</div>
+    <a id="nav-dre" onclick="showView('dre');loadDreView()">Learning report engine</a>
     <div class="grp">Why it works</div>
     <a id="nav-hob" onclick="showView('hob');loadHob()">Heuristic override</a>
     <a id="nav-why" onclick="showView('why')">Why not OpenAI</a>
@@ -308,6 +310,45 @@
       <div class="log" id="alog" style="margin:0 0 12px"></div>
       <div id="aout"></div>
       <p style="color:var(--muted);font-size:12px;margin:16px 0 0">Runs locally; nothing leaves the machine. Takes ~1–3 min depending on the model and document length.</p>
+    </div>
+
+
+    <!-- LEARNING DRE -->
+    <div class="view" id="view-dre">
+      <p class="eyebrow">Tarski Deep Reasoning Engine · learning</p>
+      <h1 style="font-family:var(--serif);font-size:clamp(24px,4vw,36px);margin:0 0 6px">Learning report engine</h1>
+      <p style="color:var(--muted);font-size:15px;margin:0 0 14px">Same deep-reasoning core, a second application. Give it one recorded learning <b>Episode</b> — the Tarski Telemetry event stream (what the learner typed, transferred from AI, and produced) — and it reasons over that verifiable evidence against the <b>Canonical Taxonomy of Learning Capabilities</b>, then returns a selective <b>Teacher report</b> and a warm <b>Student reflection</b>. It reasons broadly, reports selectively, and preserves every step underneath for audit.</p>
+      <div class="verdict" style="margin:0 0 12px"><h4>Evidence discipline</h4><p style="margin:0">copy ≠ understanding · exposure ≠ comprehension · sequence ≠ causation · AI assistance ≠ substitution. Missing/uncaptured evidence stays uncertain — never reconstructed. Every finding is stamped with its <code>construct_id</code>, taxonomy version and taxonomy SHA-256.</p></div>
+
+      <div class="picker" style="margin:0 0 10px;flex-wrap:wrap">
+        <label>Model</label><select id="modeldre" style="min-width:180px"></select>
+        <button class="tab" onclick="runDre()" id="drebuild" style="border-color:var(--accent);background:var(--accent);color:#fff">Run reasoning ▸</button>
+        <label style="margin-left:8px;font-family:var(--sans);font-size:13px;color:var(--fg);cursor:pointer"><input type="checkbox" id="dresample" checked> Use the bundled sample episode</label>
+      </div>
+
+      <div id="dreupload" style="display:none;margin:0 0 8px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="drop" style="flex:1;min-width:240px;padding:14px;margin:0" onclick="document.getElementById('drefile').click()">
+            <div class="big" style="font-size:14px">Episode event stream</div>
+            <div class="sm" id="drefile-name">.json / .jsonl telemetry — click to choose</div>
+          </div>
+          <div class="drop" style="flex:1;min-width:240px;padding:14px;margin:0" onclick="document.getElementById('dretax').click()">
+            <div class="big" style="font-size:14px">Taxonomy (optional)</div>
+            <div class="sm" id="dretax-name">defaults to Canonical Taxonomy v3.1 — click to override (.md)</div>
+          </div>
+        </div>
+        <input type="file" id="drefile" style="display:none" accept=".json,.jsonl,.txt">
+        <input type="file" id="dretax" style="display:none" accept=".md,.txt">
+      </div>
+
+      <div id="drestate" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:6px 0"></div>
+      <div id="drebarwrap" style="display:none;height:8px;background:var(--panel);border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin:0 0 4px">
+        <div id="drebar" style="height:100%;width:0;background:var(--accent);transition:width .4s"></div>
+      </div>
+      <div id="drenote" style="font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:0 0 12px"></div>
+
+      <div id="dreout"></div>
+      <p style="color:var(--muted);font-size:12px;margin:16px 0 0">Runs entirely on your machine against the app's local model — nothing leaves the building. A full run makes many reasoning passes (one per taxonomy domain, then two synthesis passes), so expect several minutes; a smaller model is faster, <b>mistral-small</b> gives the most disciplined report.</p>
     </div>
 
 
@@ -621,11 +662,115 @@ function render(D){
 // ---------- state + nav ----------
 var ST={ newDocs:[], crossDocs:[], xDocs:[] };
 function showView(v){
-  ["new","excav","cross","hist","hob","graph","audit","why","bench","ripple"].forEach(function(x){
+  ["new","excav","cross","hist","hob","graph","audit","dre","why","bench","ripple"].forEach(function(x){
     var vw=document.getElementById("view-"+x), nv=document.getElementById("nav-"+x);
     if(vw) vw.classList.toggle("on",x===v);
     if(nv) nv.classList.toggle("on",x===v);
   });
+}
+
+// ---------- Learning DRE ----------
+var DRE_READY=false, DRE_POLL=null;
+function loadDreView(){
+  var sc=document.getElementById("dresample"), up=document.getElementById("dreupload");
+  if(sc && up){ sc.onchange=function(){ up.style.display=sc.checked?"none":"block"; }; up.style.display=sc.checked?"none":"block"; }
+  var df=document.getElementById("drefile"), dt=document.getElementById("dretax");
+  if(df) df.onchange=function(){ var f=df.files[0]; document.getElementById("drefile-name").textContent=f?("✓ "+f.name):".json / .jsonl telemetry — click to choose"; };
+  if(dt) dt.onchange=function(){ var f=dt.files[0]; document.getElementById("dretax-name").textContent=f?("✓ "+f.name):"defaults to Canonical Taxonomy v3.1 — click to override (.md)"; };
+  if(DRE_READY) return;
+  var sel=document.getElementById("modeldre");
+  api("/api/dre/models").then(function(d){
+    if(!sel) return;
+    sel.innerHTML="";
+    if(!(d.models&&d.models.length)){
+      var o=document.createElement("option"); o.value=""; o.textContent="(no local model installed yet)"; sel.appendChild(o);
+      document.getElementById("drestate").textContent="No local model is installed yet — open “Get the app” / setup and pull one (mistral-small recommended).";
+    } else {
+      d.models.forEach(function(m){ var o=document.createElement("option"); o.value=m; o.textContent=modelLabel(m)+(m===d.recommended?"  ★ recommended":""); sel.appendChild(o); });
+      if(d.recommended) sel.value=d.recommended;
+    }
+    DRE_READY=true;
+  }).catch(function(){ document.getElementById("drestate").textContent="Could not reach the Learning DRE module."; });
+}
+function runDre(){
+  var btn=document.getElementById("drebuild"), sel=document.getElementById("modeldre");
+  var useSample=document.getElementById("dresample").checked;
+  var fd=new FormData();
+  fd.append("model", sel?sel.value:"");
+  fd.append("use_sample", useSample?"1":"0");
+  if(!useSample){
+    var f=document.getElementById("drefile").files[0];
+    if(!f){ document.getElementById("drestate").textContent="Choose an Episode file, or tick “Use the bundled sample episode”."; return; }
+    fd.append("episode", f);
+    var t=document.getElementById("dretax").files[0]; if(t) fd.append("taxonomy", t);
+  }
+  btn.disabled=true; btn.textContent="Reasoning…";
+  document.getElementById("dreout").innerHTML="";
+  document.getElementById("drebarwrap").style.display="block";
+  document.getElementById("drebar").style.width="2%";
+  document.getElementById("drestate").textContent="Loading evidence + taxonomy…";
+  fetch("/api/dre/run",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(d){
+    if(d.error){ dreFail(d.error); return; }
+    document.getElementById("drestate").textContent="Reasoning over the taxonomy with "+modelLabel(d.model)+" …";
+    DRE_POLL=setInterval(function(){ pollDre(d.job); }, 2500);
+  }).catch(function(e){ dreFail(String(e)); });
+}
+function dreFail(msg){
+  if(DRE_POLL){ clearInterval(DRE_POLL); DRE_POLL=null; }
+  document.getElementById("drestate").innerHTML="<span style='color:var(--fail)'>"+esc(msg)+"</span>";
+  var b=document.getElementById("drebuild"); b.disabled=false; b.textContent="Run reasoning ▸";
+}
+function pollDre(job){
+  api("/api/dre/status/"+job).then(function(s){
+    if(s.error){ dreFail(s.error); return; }
+    var p=s.progress||{}; var pct=p.pct||0;
+    document.getElementById("drebar").style.width=Math.max(2,pct)+"%";
+    document.getElementById("drenote").textContent=(p.note||"")+(p.total?("  ("+p.done+"/"+p.total+" domains)"):"");
+    if(s.state==="error"){ dreFail(s.error||"reasoning failed"); return; }
+    if(s.state==="done"){
+      clearInterval(DRE_POLL); DRE_POLL=null;
+      document.getElementById("drestate").textContent="Done — episode: "+esc(s.episode_name||"");
+      api("/api/dre/result/"+job).then(function(res){ renderDre(job,res); });
+      var b=document.getElementById("drebuild"); b.disabled=false; b.textContent="Run reasoning ▸";
+    }
+  }).catch(function(e){ /* transient */ });
+}
+function renderDre(job,res){
+  var r=res.report||{}, st=res.student||{};
+  var H=[];
+  // headline
+  H.push("<div class='verdict' style='margin:0 0 12px'><h4>Teacher report — this episode</h4><p style='font-size:15px'>"+esc(r.headline||"")+"</p></div>");
+  // findings
+  if(r.findings&&r.findings.length){
+    H.push("<div style='font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 6px'>Most important findings</div>");
+    r.findings.forEach(function(f){
+      H.push("<div style='background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:6px;padding:12px;margin:0 0 8px'>"+
+        "<div style='font-weight:600;margin-bottom:4px'>"+esc(f.finding||"")+"</div>"+
+        "<div style='font-size:13px;color:var(--muted)'><b>Why it matters:</b> "+esc(f.significance||"")+"</div>"+
+        "<div style='font-size:12px;color:var(--muted);margin-top:3px'><b>Evidence:</b> "+esc(f.evidence||"")+" · confidence: "+esc(f.confidence||"")+"</div></div>");
+    });
+  }
+  var extras=[["Strength to leverage",r.strength_to_leverage],["Next learning opportunity",r.next_learning_opportunity],["How the learner used AI",r.how_the_learner_used_ai],["Important uncertainty",r.important_uncertainty]];
+  extras.forEach(function(e){ if(e[1]) H.push("<p style='margin:6px 0'><b>"+e[0]+":</b> "+esc(e[1])+"</p>"); });
+  // student note
+  if(st.note){
+    H.push("<div class='verdict' style='margin:14px 0 10px;border-left:3px solid var(--ok)'><h4>Student reflection</h4><p style='white-space:pre-wrap'>"+esc(st.note)+"</p>");
+    if(st.you_did_well&&st.you_did_well.length){ H.push("<p style='margin:6px 0 2px'><b>What you did well</b></p><ul style='margin:0 0 4px 18px'>"); st.you_did_well.forEach(function(b){H.push("<li>"+esc(b)+"</li>");}); H.push("</ul>"); }
+    if(st.one_next_step) H.push("<p style='margin:4px 0'><b>One thing to try next:</b> "+esc(st.one_next_step)+"</p>");
+    H.push("</div>");
+  }
+  // coverage summary
+  var cov=res.coverage_summary||{};
+  var covChips=Object.keys(cov).map(function(k){ return "<span class='chip'>"+esc(k.replace('COV.',''))+": "+cov[k]+"</span>"; }).join(" ");
+  H.push("<div style='margin:12px 0 6px'><div style='font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 6px'>Coverage walk — "+
+    (res.constructs_in_play||0)+" of "+(res.n_constructs||0)+" constructs in play across "+(res.n_domains||0)+" domains</div>"+covChips+"</div>");
+  H.push("<p style='font-family:var(--mono);font-size:11px;color:var(--muted);margin:8px 0'>taxonomy v"+esc(res.taxonomy_version||"")+" · sha256 "+esc((res.taxonomy_sha256||"").slice(0,12))+"…  ·  Reason broadly · Report selectively · Preserve everything underneath.</p>");
+  // downloads
+  H.push("<div style='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0'>"+
+    "<a class='tab' href='/api/dre/download/"+job+"/teacher'>⬇ Teacher report (.md)</a>"+
+    "<a class='tab' href='/api/dre/download/"+job+"/student'>⬇ Student reflection (.md)</a>"+
+    "<a class='tab' href='/api/dre/download/"+job+"/internal'>⬇ Full internal consideration (.json)</a></div>");
+  document.getElementById("dreout").innerHTML=H.join("");
 }
 
 // ---------- Heuristic override demo ----------

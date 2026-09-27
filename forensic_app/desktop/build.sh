@@ -12,11 +12,13 @@ PY=python3; command -v python3 >/dev/null 2>&1 || PY=python
 cd "$R"
 "$PY" -m PyInstaller --onefile --name ForensicEngine \
   --distpath "$R/desktop_dist" --workpath /tmp/pyi_work --specpath /tmp/pyi_spec \
-  --paths "$R/forensic_app" --paths "$R/local_engine" \
+  --paths "$R/forensic_app" --paths "$R/local_engine" --paths "$R/tarski_dre" \
   --add-data "$R/forensic_app/static${SEP}forensic_app/static" \
   --add-data "$R/forensic_app/VERSION${SEP}forensic_app" \
   --add-data "$R/forensic_app/hob_samples.json${SEP}forensic_app" \
   --add-data "$R/local_engine/decks${SEP}local_engine/decks" \
+  --add-data "$R/tarski_dre/resources${SEP}tarski_dre/resources" \
+  --hidden-import dre_core --hidden-import dre_reason --hidden-import dre_api \
   --hidden-import pdfplumber --hidden-import pypdf --hidden-import docx --hidden-import multipart \
   --collect-all pdfminer --collect-submodules uvicorn \
   --exclude-module torch --exclude-module transformers --exclude-module peft \

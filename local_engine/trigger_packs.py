@@ -37,7 +37,7 @@ _PRECISION = (
     "or cannot support."
 )
 
-# ---- Pack: comparative / outcome trial feasibility (encodes the expertise in Kerry's takedown) ----
+# ---- Pack: comparative / outcome trial feasibility (encodes the expertise in an expert takedown) ----
 TRIAL_FEASIBILITY = {
     "id": "trial_feasibility",
     "when": "the document proposes or relies on a clinical / comparative / outcome trial or study "
@@ -233,7 +233,7 @@ def run(deck):
 
 if __name__ == "__main__":
     import sys, json
-    deck = open(sys.argv[1] if len(sys.argv) > 1 else "/tmp/kerry_deck.txt").read().strip()
+    deck = open(sys.argv[1] if len(sys.argv) > 1 else "/tmp/deck.txt").read().strip()
     fs, applied = run(deck)
     print("applied packs:", applied, "| findings:", len(fs))
     print(json.dumps(fs, ensure_ascii=False, indent=2))

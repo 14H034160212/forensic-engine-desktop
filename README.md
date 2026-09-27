@@ -17,8 +17,19 @@ See [`forensic_app/desktop/`](forensic_app/desktop/) — PyInstaller single-bina
 (`build.sh`/`build.bat`) and a Tauri scaffold for signed installers. CI builds all three OSes:
 [`.github/workflows/build-desktop.yml`](.github/workflows/build-desktop.yml).
 
+## Learning DRE (Tarski Deep Reasoning Engine)
+The same shell hosts a second application of the deep-reasoning core: the **Learning report engine**
+(nav → *Learning DRE*). Give it one recorded learning **Episode** (a Tarski Telemetry event stream)
+and it reasons over that verifiable evidence against the **Canonical Taxonomy of Learning
+Capabilities**, returning a selective Teacher report + Student reflection and preserving the full
+internal consideration for audit. It shares the app's local Ollama — no extra runtime — and ships with
+a small synthetic sample episode + a demo taxonomy so it works out of the box (bring your own full
+taxonomy to use it for real). Code: [`tarski_dre/`](tarski_dre/); API:
+[`forensic_app/dre_api.py`](forensic_app/dre_api.py). Best quality with `mistral-small`.
+
 ## Layout
 - `forensic_app/` — FastAPI app, static UI, launchers, updater, desktop packaging
 - `local_engine/` — the analysis engine + non-confidential sample decks
+- `tarski_dre/` — the Learning DRE (deterministic core + reasoning layer) + bundled sample episode
 
 Decision-support, not financial/legal advice.

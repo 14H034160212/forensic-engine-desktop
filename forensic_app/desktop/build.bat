@@ -8,11 +8,13 @@ set R=%~dp0..\..
 pushd "%R%"
 python -m PyInstaller --onefile --name ForensicEngine ^
   --distpath "%R%\desktop_dist" --workpath "%TEMP%\pyi_work" --specpath "%TEMP%\pyi_spec" ^
-  --paths "%R%\forensic_app" --paths "%R%\local_engine" ^
+  --paths "%R%\forensic_app" --paths "%R%\local_engine" --paths "%R%\tarski_dre" ^
   --add-data "%R%\forensic_app\static;forensic_app/static" ^
   --add-data "%R%\forensic_app\VERSION;forensic_app" ^
   --add-data "%R%\forensic_app\hob_samples.json;forensic_app" ^
   --add-data "%R%\local_engine\decks;local_engine/decks" ^
+  --add-data "%R%\tarski_dre\resources;tarski_dre/resources" ^
+  --hidden-import dre_core --hidden-import dre_reason --hidden-import dre_api ^
   --hidden-import pdfplumber --hidden-import pypdf --hidden-import docx --hidden-import multipart ^
   --collect-all pdfminer --collect-submodules uvicorn ^
   --exclude-module torch --exclude-module transformers --exclude-module peft ^

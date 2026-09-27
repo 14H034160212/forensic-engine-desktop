@@ -5,6 +5,7 @@ build/
 dist/
 *.spec
 forensic_app/runs/
+forensic_app/dre_runs/
 forensic_app/uploads/
 forensic_app/download/
 node_modules/
