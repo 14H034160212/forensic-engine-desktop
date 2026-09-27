@@ -15,6 +15,7 @@ python -m PyInstaller --onefile --name ForensicEngine ^
   --add-data "%R%\local_engine\decks;local_engine/decks" ^
   --add-data "%R%\tarski_dre\resources;tarski_dre/resources" ^
   --hidden-import dre_core --hidden-import dre_reason --hidden-import dre_api ^
+  --hidden-import typed_local --hidden-import jev_backend ^
   --hidden-import pdfplumber --hidden-import pypdf --hidden-import docx --hidden-import multipart ^
   --collect-all pdfminer --collect-submodules uvicorn ^
   --exclude-module torch --exclude-module transformers --exclude-module peft ^

@@ -6,6 +6,8 @@ dist/
 *.spec
 forensic_app/runs/
 forensic_app/dre_runs/
+tarski_dre/out*/
+tarski_dre/ab_result.json
 forensic_app/uploads/
 forensic_app/download/
 node_modules/

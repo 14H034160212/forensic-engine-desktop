@@ -75,7 +75,7 @@ def register_dre(app, HERE, DATA):
         return {k: j[k] for k in ("id", "state", "progress", "model", "error",
                                   "started_at", "finished_at", "episode_name") if k in j}
 
-    def _run_job(job_id, episode_path, taxonomy_path, model, outdir):
+    def _run_job(job_id, episode_path, taxonomy_path, model, outdir, decision_backend="local"):
         import dre_core, dre_reason
         j = _JOBS[job_id]
         with _RUN_LOCK:
@@ -85,6 +85,10 @@ def register_dre(app, HERE, DATA):
                 dre_reason.OLLAMA = _ollama_host()
                 dre_reason.MODEL = model
                 os.environ["DRE_MODEL"] = model
+                # coverage decision backend for THIS run (runs are serialised by _RUN_LOCK, so setting
+                # the process env here is safe): 'local' free-form, or 'local_typed' constrained decoding.
+                os.environ["OLLAMA_HOST"] = _ollama_host()
+                os.environ["DRE_DECISION_BACKEND"] = decision_backend
                 j["progress"] = {"stage": "loading", "done": 0, "total": 1, "pct": 2,
                                  "note": "Loading taxonomy + telemetry evidence"}
                 tax, ep, obs = dre_core.load_all(episode_path, taxonomy_path)
@@ -138,6 +142,9 @@ def register_dre(app, HERE, DATA):
         form = await request.form()
         model = (form.get("model") or "").strip()
         use_sample = str(form.get("use_sample", "")).strip().lower() in ("1", "true", "yes", "on")
+        decision_backend = (form.get("decision_backend") or "local").strip().lower()
+        if decision_backend not in ("local", "local_typed", "jev"):
+            decision_backend = "local"
 
         have = _installed_models()
         if not model:
@@ -184,9 +191,9 @@ def register_dre(app, HERE, DATA):
         with _JOBS_LOCK:
             _JOBS[job_id] = job
         threading.Thread(target=_run_job,
-                         args=(job_id, episode_path, taxonomy_path, model, outdir),
+                         args=(job_id, episode_path, taxonomy_path, model, outdir, decision_backend),
                          daemon=True).start()
-        return {"job": job_id, "model": model}
+        return {"job": job_id, "model": model, "decision_backend": decision_backend}
 
     @app.get("/api/dre/status/{job_id}")
     def dre_status(job_id: str):

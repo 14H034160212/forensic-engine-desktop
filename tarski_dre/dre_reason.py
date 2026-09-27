@@ -139,6 +139,27 @@ def run(tax, ep, obs, outdir, progress=None):
         all_constructs_by_dom.setdefault(c["domain"], []).append(c)
     findings_in_play = []
     CHUNK = 12   # cap constructs per LLM call so the JSON reply is never truncated (fixes large domains like D06)
+    # Decision backend for the coverage classification step: 'local' (LLM, default) or 'jev' (TypeSafe
+    # System One typed decisions). Report SYNTHESIS always stays local — Jev does not generate text.
+    backend = os.environ.get("DRE_DECISION_BACKEND", "local").strip().lower()
+    classify = reason_domain
+    if backend in ("local_typed", "typed"):
+        try:
+            import typed_local
+            classify = typed_local.classify_domain
+            print("  [decision backend: LOCAL constrained typed decoding]", flush=True)
+        except Exception as e:
+            print(f"  [local_typed backend unavailable ({e}) → freeform local]", flush=True)
+    elif backend == "jev":
+        try:
+            import jev_backend
+            if jev_backend.available():
+                classify = jev_backend.classify_domain
+                print("  [decision backend: JEV typed decisions]", flush=True)
+            else:
+                print("  [DRE_DECISION_BACKEND=jev but TYPESAFE_API_KEY missing → falling back to local]", flush=True)
+        except Exception as e:
+            print(f"  [jev backend unavailable ({e}) → local]", flush=True)
     dom_ids = sorted(tax["domains"])
     ndoms = len(dom_ids)
     for di, did in enumerate(dom_ids):
@@ -147,7 +168,7 @@ def run(tax, ep, obs, outdir, progress=None):
         _p("domain", di, ndoms, f"{did} — {dom['name']}")
         merged = {"domain_relevance": "", "constructs": []}
         for i in range(0, len(cons), CHUNK):
-            part = reason_domain(dom, cons[i:i+CHUNK], brief)
+            part = classify(dom, cons[i:i+CHUNK], brief)
             if part.get("domain_relevance") and not merged["domain_relevance"]:
                 merged["domain_relevance"] = part["domain_relevance"]
             merged["constructs"].extend(part.get("constructs", []))

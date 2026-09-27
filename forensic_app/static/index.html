@@ -324,6 +324,7 @@
         <label>Model</label><select id="modeldre" style="min-width:180px"></select>
         <button class="tab" onclick="runDre()" id="drebuild" style="border-color:var(--accent);background:var(--accent);color:#fff">Run reasoning ▸</button>
         <label style="margin-left:8px;font-family:var(--sans);font-size:13px;color:var(--fg);cursor:pointer"><input type="checkbox" id="dresample" checked> Use the bundled sample episode</label>
+        <label title="Constrained typed decoding: forces a valid decision for every construct and runs several times faster than free-form reasoning — fully local, no cloud." style="margin-left:8px;font-family:var(--sans);font-size:13px;color:var(--fg);cursor:pointer"><input type="checkbox" id="dretyped"> Fast typed decisions (local “System One”)</label>
       </div>
 
       <div id="dreupload" style="display:none;margin:0 0 8px">
@@ -698,6 +699,7 @@ function runDre(){
   var fd=new FormData();
   fd.append("model", sel?sel.value:"");
   fd.append("use_sample", useSample?"1":"0");
+  fd.append("decision_backend", document.getElementById("dretyped").checked?"local_typed":"local");
   if(!useSample){
     var f=document.getElementById("drefile").files[0];
     if(!f){ document.getElementById("drestate").textContent="Choose an Episode file, or tick “Use the bundled sample episode”."; return; }
