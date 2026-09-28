@@ -134,6 +134,16 @@ def register_dre(app, HERE, DATA):
                     "recorder_version": ep.get("recorder_version", ""),
                     "providers": ep.get("providers", []),
                 }
+                # Knowledge graphs (understanding + reasoning) over the same Episode — best-effort;
+                # never breaks the main report. Only meaningful when we have the raw provenance events.
+                try:
+                    j["progress"] = {"stage": "graphs", "done": 1, "total": 1, "pct": 98,
+                                     "note": "Building understanding + reasoning graphs"}
+                    import graphs_step
+                    j["result"]["graphs"] = graphs_step.build_graphs(
+                        episode_path, host=_ollama_host(), model=model)
+                except Exception as ge:
+                    j["result"]["graphs"] = {"available": False, "error": str(ge)}
                 j["state"] = "done"
                 j["progress"] = {"stage": "done", "done": 1, "total": 1, "pct": 100, "note": "Reports ready"}
             except Exception as e:
