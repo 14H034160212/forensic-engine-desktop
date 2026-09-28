@@ -795,20 +795,15 @@ function renderDre(job,res){
           "<div style='font-size:11px;color:var(--muted)'>evidence "+(r.evidence||[]).map(function(s){return '#'+s;}).join(', ')+" · "+esc(r.grade||"")+"</div></div>");
       });
     }
-    // understanding graph: nodes + edges
+    // understanding graph: SVG node-link diagram (falls back to chips for a tiny graph)
     if(g.understanding_nodes && g.understanding_nodes.length){
-      H.push("<div style='font-weight:600;font-size:13px;margin:10px 0 4px'>Understanding graph</div><div style='display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px'>");
-      var kindColor={ORIGINATED:"var(--ok)",RESTATED:"var(--ok)",APPLIED:"var(--ok)",CORRECTED:"var(--accent)",VOICED_IN_PROMPT:"var(--muted)",ENCOUNTERED:"var(--muted)",TRANSFERRED_VERBATIM:"var(--fail)",UNATTRIBUTABLE_AFTER_COPY:"var(--fail)"};
-      g.understanding_nodes.forEach(function(n){
-        var c=kindColor[n.kind]||"var(--muted)";
-        H.push("<span title='"+esc(n.detail||"")+"' style='border:1px solid var(--rule);border-left:3px solid "+c+";border-radius:5px;padding:3px 8px;font-size:12px'>"+esc(n.label)+" <span style='font-family:var(--mono);font-size:9.5px;color:"+c+"'>"+esc((n.kind||"").replace(/_/g,' '))+"</span></span>");
-      });
-      H.push("</div>");
-      if(g.understanding_edges && g.understanding_edges.length){
-        H.push("<div style='font-size:12px;color:var(--muted);margin:0 0 6px'>");
-        g.understanding_edges.forEach(function(e){ H.push("&nbsp;•&nbsp;"+esc(e.source)+" <span style='font-family:var(--mono);font-size:10px'>—"+esc((e.relation||"").replace(/_/g,' '))+"→</span> "+esc(e.target)+"<br>"); });
-        H.push("</div>");
-      }
+      H.push("<div style='font-weight:600;font-size:13px;margin:10px 0 4px'>Understanding graph</div>");
+      H.push(dreUnderstandingSVG(g.understanding_nodes, g.understanding_edges||[]));
+      H.push("<div style='display:flex;flex-wrap:wrap;gap:10px;margin:4px 0 0;font-family:var(--mono);font-size:10px;color:var(--muted)'>"+
+        "<span style='color:var(--ok)'>● learner's own (originated/restated/applied)</span>"+
+        "<span style='color:var(--accent)'>● corrected</span>"+
+        "<span style='color:var(--muted)'>● encountered / in a prompt</span>"+
+        "<span style='color:var(--fail)'>● transferred / unattributable</span></div>");
     }
     H.push("<p style='font-family:var(--mono);font-size:10.5px;color:var(--muted);margin:6px 0 0'>Citation gate: "+(g.dropped||0)+" claim(s) discarded (uncited or mislabelled), "+(g.corrections||0)+" corrected — a hallucinating model yields a missing finding, never a fabricated one. Graphs by "+esc(g.model||"")+".</p>");
   } else if(g && g.available===false && g.error){
@@ -820,6 +815,36 @@ function renderDre(job,res){
     "<a class='tab' href='/api/dre/download/"+job+"/student'>⬇ Student reflection (.md)</a>"+
     "<a class='tab' href='/api/dre/download/"+job+"/internal'>⬇ Full internal consideration (.json)</a></div>");
   document.getElementById("dreout").innerHTML=H.join("");
+}
+// Understanding graph → inline SVG node-link diagram (circular layout, theme-aware via CSS vars).
+function dreUnderstandingSVG(nodes, edges){
+  var KC={ORIGINATED:"var(--ok)",RESTATED:"var(--ok)",APPLIED:"var(--ok)",CORRECTED:"var(--accent)",
+          VOICED_IN_PROMPT:"var(--muted)",ENCOUNTERED:"var(--muted)",
+          TRANSFERRED_VERBATIM:"var(--fail)",UNATTRIBUTABLE_AFTER_COPY:"var(--fail)"};
+  var N=nodes.length, W=660, H=Math.max(300, N<=6?320:440);
+  var cx=W/2, cy=H/2, rx=W/2-104, ry=H/2-42;
+  var pos={};
+  nodes.forEach(function(n,i){ var a=(-Math.PI/2)+i*2*Math.PI/N;
+    pos[n.label]={x: N===1?cx:cx+rx*Math.cos(a), y: N===1?cy:cy+ry*Math.sin(a), kind:n.kind, detail:n.detail||""}; });
+  var p=['<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;max-height:460px;border:1px solid var(--rule);border-radius:8px;background:var(--panel)" xmlns="http://www.w3.org/2000/svg">'];
+  p.push('<defs><marker id="dreArr" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" style="fill:var(--muted)"/></marker></defs>');
+  // edges first (under nodes)
+  edges.forEach(function(e){ var a=pos[e.source], b=pos[e.target]; if(!a||!b)return;
+    var mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    p.push('<line x1="'+a.x.toFixed(0)+'" y1="'+a.y.toFixed(0)+'" x2="'+b.x.toFixed(0)+'" y2="'+b.y.toFixed(0)+'" style="stroke:var(--muted);opacity:.5" stroke-width="1.4" marker-end="url(#dreArr)"/>');
+    p.push('<text x="'+mx.toFixed(0)+'" y="'+my.toFixed(0)+'" text-anchor="middle" style="fill:var(--muted);font-family:var(--mono)" font-size="8.5">'+esc((e.relation||"").replace(/_/g,' ').toLowerCase())+'</text>'); });
+  // nodes
+  nodes.forEach(function(n){ var pt=pos[n.label], c=KC[n.kind]||"var(--muted)";
+    var lbl=n.label||"", w=Math.max(64,Math.min(150,lbl.length*6.3+22)), h=34;
+    var wds=lbl.split(" "), l1="",l2="";
+    wds.forEach(function(x){ if(!l2 && (!l1||(l1+" "+x).length<=15)) l1=(l1?l1+" ":"")+x; else l2=(l2?l2+" ":"")+x; });
+    var g='<g transform="translate('+pt.x.toFixed(0)+','+pt.y.toFixed(0)+')"><title>'+esc(n.kind+": "+pt.detail)+'</title>';
+    g+='<rect x="'+(-w/2)+'" y="'+(-h/2)+'" rx="7" width="'+w+'" height="'+h+'" style="fill:var(--bg);stroke:'+c+'" stroke-width="1.7"/>';
+    if(l2){ g+='<text text-anchor="middle" y="-3" font-size="10" style="fill:'+c+';font-family:system-ui">'+esc(l1)+'</text><text text-anchor="middle" y="9" font-size="10" style="fill:'+c+';font-family:system-ui">'+esc(l2)+'</text>'; }
+    else { g+='<text text-anchor="middle" y="4" font-size="10.5" style="fill:'+c+';font-family:system-ui">'+esc(l1)+'</text>'; }
+    g+='</g>'; p.push(g); });
+  p.push('</svg>');
+  return p.join("");
 }
 
 // ---------- Heuristic override demo ----------
