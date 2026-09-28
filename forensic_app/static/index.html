@@ -330,15 +330,15 @@
       <div id="dreupload" style="display:none;margin:0 0 8px">
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <div class="drop" style="flex:1;min-width:240px;padding:14px;margin:0" onclick="document.getElementById('drefile').click()">
-            <div class="big" style="font-size:14px">Episode event stream</div>
-            <div class="sm" id="drefile-name">.json / .jsonl telemetry — click to choose</div>
+            <div class="big" style="font-size:14px">Episode from the Recorder</div>
+            <div class="sm" id="drefile-name">the Recorder's Episode folder as a <b>.zip</b> (or a .jsonl / .json) — click to choose</div>
           </div>
           <div class="drop" style="flex:1;min-width:240px;padding:14px;margin:0" onclick="document.getElementById('dretax').click()">
             <div class="big" style="font-size:14px">Taxonomy (optional)</div>
             <div class="sm" id="dretax-name">defaults to Canonical Taxonomy v3.1 — click to override (.md)</div>
           </div>
         </div>
-        <input type="file" id="drefile" style="display:none" accept=".json,.jsonl,.txt">
+        <input type="file" id="drefile" style="display:none" accept=".zip,.json,.jsonl,.txt">
         <input type="file" id="dretax" style="display:none" accept=".md,.txt">
       </div>
 
@@ -740,6 +740,17 @@ function pollDre(job){
 function renderDre(job,res){
   var r=res.report||{}, st=res.student||{};
   var H=[];
+  // provenance integrity badge (independent hash-chain re-verification of the Recorder's evidence)
+  var ig=res.integrity||{};
+  if(ig.chain_ok===true){
+    H.push("<div style='background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--ok);border-radius:6px;padding:10px 12px;margin:0 0 10px;font-size:12.5px'>"+
+      "<b style='color:var(--ok)'>✓ Evidence chain VERIFIED-INTACT</b> — the DRE independently re-verified the Recorder's SHA-256 hash chain ("+esc(ig.events_verified||0)+" events)."+
+      (res.recorder_version?" Recorder "+esc(res.recorder_version)+".":"")+(res.providers&&res.providers.length?" AI: "+esc(res.providers.join(', '))+".":"")+
+      "<div style='color:var(--muted);margin-top:3px'>Local hash chain only — VERIFIED-INTACT, not tamper-proof.</div></div>");
+  } else if(ig.chain_ok===false){
+    H.push("<div style='background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--fail);border-radius:6px;padding:10px 12px;margin:0 0 10px;font-size:12.5px'>"+
+      "<b style='color:var(--fail)'>✗ Evidence chain FAILED verification</b> — "+esc(ig.detail||"")+". Findings below are not trustworthy.</div>");
+  }
   // headline
   H.push("<div class='verdict' style='margin:0 0 12px'><h4>Teacher report — this episode</h4><p style='font-size:15px'>"+esc(r.headline||"")+"</p></div>");
   // findings

@@ -41,8 +41,86 @@ def load_taxonomy(md_path):
             "constructs": constructs, "vocab": dict(vocab), "md_path": md_path}
 
 # ----------------------------------------------------------------- evidence ingest
-def load_events(jsonl_path):
-    return [json.loads(l) for l in open(jsonl_path, encoding="utf-8") if l.strip()]
+# The Tarski Recorder ("monitor app") writes one Episode-<ts> folder per session:
+#   episode.provenance.jsonl  (AUTHORITATIVE hash-chained evidence)
+#   episode.manifest.json     (convenience index)
+#   media/ , archives/
+# We read the provenance log natively (no conversion), and INDEPENDENTLY re-verify the hash chain
+# rather than trusting the recorder's own verifier. Kind names have drifted across recorder versions
+# (e.g. EXPOSURE_SUMMARY vs SOURCE_SEGMENT_EXPOSURE, TRANSFER_EXACT vs TRANSFER_EVIDENCE), so ingest
+# looks up kinds by alias sets below.
+KIND_ALIASES = {
+    "TRANSFER": ("TRANSFER_EVIDENCE", "TRANSFER_EXACT", "TRANSFER_NEAR"),
+    "EXPOSURE": ("SOURCE_SEGMENT_EXPOSURE", "EXPOSURE_SUMMARY"),
+    "RESP_STARTED": ("AI_RESPONSE_STARTED",),
+    "CAPTURE_LIMIT": ("CAPTURE_LIMITATION",),
+    "CONN_GAP": ("CONNECTOR_GAP_START",),
+}
+def _of(by_kind, group):
+    out = []
+    for k in KIND_ALIASES[group]:
+        out += by_kind.get(k) or []
+    return out
+
+def _canonical_bytes(event):
+    """Independent reimplementation of the recorder's canonical serialisation (excludes event_hash)."""
+    payload = {k: v for k, v in event.items() if k != "event_hash"}
+    try:
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    except UnicodeEncodeError:
+        return json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+
+def verify_chain(events):
+    """Recompute the SHA-256 hash chain from first principles (a verifier that trusts the producing code
+    is not a verifier). Returns {chain_ok, events_verified, detail}."""
+    previous = ""
+    for i, ev in enumerate(events):
+        stored = ev.get("event_hash")
+        if not stored:
+            return {"chain_ok": False, "events_verified": i, "detail": f"event {i} has no event_hash"}
+        if ev.get("previous_hash", "") != previous:
+            return {"chain_ok": False, "events_verified": i,
+                    "detail": f"event {i} (seq {ev.get('global_sequence')}) previous_hash mismatch"}
+        if hashlib.sha256(_canonical_bytes(ev)).hexdigest() != stored:
+            return {"chain_ok": False, "events_verified": i,
+                    "detail": f"event {i} (seq {ev.get('global_sequence')}) payload != its event_hash"}
+        previous = stored
+    return {"chain_ok": True, "events_verified": len(events), "detail": f"{len(events)} events verified"}
+
+def find_episode_log(path):
+    """Given an Episode folder (or a direct file), return (events_path, manifest_path|None).
+    Prefers the authoritative *provenance*.jsonl; else any *.jsonl; else a *manifest*.json / .json."""
+    if os.path.isdir(path):
+        jsonls = sorted([f for f in os.listdir(path) if f.endswith(".jsonl")])
+        prov = [f for f in jsonls if "provenance" in f.lower()] or jsonls
+        mans = sorted([f for f in os.listdir(path) if "manifest" in f.lower() and f.endswith(".json")])
+        if prov:
+            return os.path.join(path, prov[0]), (os.path.join(path, mans[0]) if mans else None)
+        if mans:  # manifest-only episode (e.g. the 3.42 export we started from)
+            return os.path.join(path, mans[0]), os.path.join(path, mans[0])
+        raise FileNotFoundError(f"no .jsonl / manifest .json in Episode folder {path}")
+    return path, None
+
+def load_events(path):
+    """Load events from an Episode folder, a .jsonl provenance log, or a manifest .json (which may be a
+    single JSON object/array or line-delimited JSONL)."""
+    events_path, _ = find_episode_log(path)
+    raw = open(events_path, encoding="utf-8").read()
+    lines = [l for l in raw.splitlines() if l.strip()]
+    # JSONL (one event per line) — the normal case
+    if len(lines) > 1 or (lines and lines[0].lstrip().startswith("{") and raw.count("\n") > 0 and not raw.lstrip().startswith("[")):
+        try:
+            return [json.loads(l) for l in lines]
+        except Exception:
+            pass
+    # single JSON object or array
+    doc = json.loads(raw)
+    if isinstance(doc, list):
+        return doc
+    for key in ("events", "provenance", "log"):
+        if isinstance(doc.get(key), list):
+            return doc[key]
+    return [doc]
 
 def _g(e, *ks, default=""):
     for k in ks:
@@ -77,17 +155,17 @@ def ingest(events):
     # AI turns: prompts and responses, paired loosely by conversation + ordinal/sequence
     prompts = by_kind.get("AI_PROMPT") or []
     responses = by_kind.get("AI_RESPONSE") or []
-    resp_started = by_kind.get("AI_RESPONSE_STARTED") or []
+    resp_started = _of(by_kind, "RESP_STARTED")
     turns = []
     for p in prompts:
         turns.append({"role": "prompt", "seq": int(_g(p, "global_sequence", default=0)),
-                      "provider": _g(p, "provider"), "chars": _g(p, "chars", default=0),
+                      "provider": _g(p, "provider"), "chars": _g(p, "chars", default=0) or len(_g(p, "text") or ""),
                       "full_text_present": p.get("full_text_present"),
                       "text": _g(p, "text"), "event_id": p.get("event_id"),
                       "observed_at": _g(p, "observed_at")})
     for r in responses:
         turns.append({"role": "response", "seq": int(_g(r, "global_sequence", default=0)),
-                      "provider": _g(r, "provider"), "chars": _g(r, "chars", default=0),
+                      "provider": _g(r, "provider"), "chars": _g(r, "chars", default=0) or len(_g(r, "text") or ""),
                       "full_text_present": r.get("full_text_present"),
                       "completion_state": _g(r, "completion_state"),
                       "text": _g(r, "text"), "event_id": r.get("event_id"),
@@ -98,38 +176,43 @@ def ingest(events):
 
     # doc changes
     inserts = by_kind.get("DOC_INSERT") or []
-    ep["doc_inserts"] = [{"chars": _g(i, "chars", default=0), "classification": _g(i, "classification"),
+    ep["doc_inserts"] = [{"chars": _g(i, "chars", default=0) or len(_g(i, "text") or ""),
+                          "classification": _g(i, "classification"),
                           "classification_basis": _g(i, "classification_basis"),
                           "text": _g(i, "text"), "event_id": i.get("event_id"),
                           "seq": int(_g(i, "global_sequence", default=0))} for i in inserts]
     ep["doc_edits"] = len(by_kind.get("DOC_EDIT") or [])
     ep["doc_whitespace"] = len(by_kind.get("DOC_WHITESPACE_CHANGE") or [])
 
-    # transfers (AI/source -> document)
+    # transfers (AI/source -> document) — alias-aware across recorder versions
     ep["copies"] = len(by_kind.get("COPY") or [])
     ep["pastes"] = len(by_kind.get("PASTE") or [])
-    ep["transfers"] = len(by_kind.get("TRANSFER_EVIDENCE") or [])
+    ep["transfers"] = len(_of(by_kind, "TRANSFER"))
 
-    # exposure / reading (cap each segment; raw visible_ms double-counts re-exposures)
-    exp = by_kind.get("SOURCE_SEGMENT_EXPOSURE") or []
+    # exposure / reading (cap each segment; raw visible time double-counts re-exposures)
+    exp = _of(by_kind, "EXPOSURE")
     CAP = 30000  # 30s per segment cap to avoid inflated totals from re-exposure/duplicates
-    capped = sum(min(int(_g(x, "visible_ms", default=0) or 0), CAP) for x in exp)
+    capped = sum(min(int(_g(x, "visible_ms", "active_visible_ms", default=0) or 0), CAP) for x in exp)
     ep["exposure"] = {"segments": len(exp), "approx_read_seconds_capped": capped // 1000,
-                      "providers": dict(Counter(_g(x, "provider", default="?") for x in exp)),
+                      "providers": dict(Counter(_g(x, "provider", "host", default="?") for x in exp)),
                       "note": "per-segment capped at 30s; raw visible time double-counts re-exposures."}
 
     # capture gaps (the known limitation: some AI replies not fully present)
     n_started, n_resp = len(resp_started), len(responses)
     missing_responses = max(0, n_started - n_resp)   # responses that began but were not fully captured
-    cap_lim = by_kind.get("CAPTURE_LIMITATION") or []
-    conn_gaps = by_kind.get("CONNECTOR_GAP_START") or []
+    cap_lim = _of(by_kind, "CAPTURE_LIMIT")
+    conn_gaps = _of(by_kind, "CONN_GAP")
+    if missing_responses or cap_lim:
+        note = ("~{} AI replies began but were not captured in full ({} capture-limitation events). "
+                "Missing evidence is preserved, not reconstructed; reasoning over those turns keeps "
+                "uncertainty.".format(missing_responses, len(cap_lim)))
+    else:
+        note = "No capture gaps recorded for this episode."
     ep["capture_gaps"] = {
         "responses_started_not_fully_captured": missing_responses,
         "response_started_events": n_started, "response_events": n_resp,
         "capture_limitation_events": len(cap_lim), "connector_gap_events": len(conn_gaps),
-        "note": "Browser capture was still being hardened; ~{} ChatGPT replies began but were not "
-                "captured in full. Missing evidence is preserved, not reconstructed; reasoning over "
-                "those turns must keep uncertainty.".format(missing_responses)}
+        "note": note}
     return ep
 
 # ----------------------------------------------------------------- observation layer
@@ -200,8 +283,21 @@ def derive_observations(ep):
 
 # ----------------------------------------------------------------- convenience
 def load_all(events_path, taxonomy_md, artifact_docx=None):
+    """events_path may be a Recorder Episode FOLDER, a .jsonl provenance log, or a manifest .json."""
     tax = load_taxonomy(taxonomy_md)
-    ep = ingest(load_events(events_path))
+    events = load_events(events_path)
+    ep = ingest(events)
+    # Independently re-verify the provenance hash chain (only meaningful when the log carries hashes).
+    if events and events[0].get("event_hash"):
+        integ = verify_chain(events)
+        integ["tamper_resistance"] = "LOCAL_HASH_CHAIN_ONLY"
+        integ["caveat"] = ("Local SHA-256 hash chain independently re-verified by the DRE. Detects any "
+                           "modification of a committed event or break in link order; it is VERIFIED-INTACT, "
+                           "not tamper-proof (no off-machine key signs it).")
+        ep["integrity"] = integ
+    else:
+        ep["integrity"] = {"chain_ok": None, "events_verified": 0,
+                           "detail": "no hash chain present (manifest-only or export without provenance log)"}
     # Prefer the artifact text captured in the telemetry itself (authoritative, in-episode).
     ep["artifact_text"] = ep.get("final_text", "")
     if not ep["artifact_text"] and artifact_docx and os.path.exists(artifact_docx):

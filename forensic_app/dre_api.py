@@ -130,6 +130,9 @@ def register_dre(app, HERE, DATA):
                     "taxonomy_sha256": internal.get("taxonomy", {}).get("sha256"),
                     "teacher_md": _read("teacher_report.md"),
                     "student_md": _read("student_report.md"),
+                    "integrity": ep.get("integrity", {}),
+                    "recorder_version": ep.get("recorder_version", ""),
+                    "providers": ep.get("providers", []),
                 }
                 j["state"] = "done"
                 j["progress"] = {"stage": "done", "done": 1, "total": 1, "pct": 100, "note": "Reports ready"}
@@ -166,7 +169,7 @@ def register_dre(app, HERE, DATA):
         os.makedirs(outdir, exist_ok=True)
 
         # resolve inputs: uploaded files win; otherwise fall back to the bundled sample / default taxonomy
-        episode_path = os.path.join(outdir, "episode.json")
+        episode_path = os.path.join(outdir, "episode.jsonl")
         taxonomy_path = os.path.join(outdir, "taxonomy.md")
         ep_file = form.get("episode")
         tax_file = form.get("taxonomy")
@@ -177,8 +180,24 @@ def register_dre(app, HERE, DATA):
                                         status_code=400)
                 shutil.copyfile(SAMPLE_EPISODE, episode_path)
             else:
-                with open(episode_path, "wb") as f:
-                    f.write(await ep_file.read())
+                fname = (getattr(ep_file, "filename", "") or "").lower()
+                data = await ep_file.read()
+                if fname.endswith(".zip"):
+                    # A Recorder Episode exported as a zip — unpack and point at the Episode folder.
+                    import zipfile, io
+                    exdir = os.path.join(outdir, "episode_extracted")
+                    os.makedirs(exdir, exist_ok=True)
+                    with zipfile.ZipFile(io.BytesIO(data)) as z:
+                        z.extractall(exdir)
+                    # locate the folder that actually contains the provenance log / manifest
+                    episode_path = exdir
+                    for root, _dirs, files in os.walk(exdir):
+                        if any(f.endswith(".jsonl") for f in files) or any("manifest" in f.lower() and f.endswith(".json") for f in files):
+                            episode_path = root
+                            break
+                else:
+                    with open(episode_path, "wb") as f:
+                        f.write(data)
             if tax_file is not None and not use_sample:
                 with open(taxonomy_path, "wb") as f:
                     f.write(await tax_file.read())
