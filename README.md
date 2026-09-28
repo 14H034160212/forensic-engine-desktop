@@ -23,9 +23,10 @@ The same shell hosts a second application of the deep-reasoning core: the **Lear
 and it reasons over that verifiable evidence against the **Canonical Taxonomy of Learning
 Capabilities**, returning a selective Teacher report + Student reflection and preserving the full
 internal consideration for audit. It shares the app's local Ollama — no extra runtime — and ships with
-a small synthetic sample episode + a demo taxonomy so it works out of the box (bring your own full
-taxonomy to use it for real). Code: [`tarski_dre/`](tarski_dre/); API:
-[`forensic_app/dre_api.py`](forensic_app/dre_api.py). Best quality with `mistral-small`.
+the full Canonical Taxonomy of Learning Capabilities v3.1 (137 constructs / 10 domains) plus a small
+synthetic sample episode, so it works out of the box; upload your own Episode to analyse it. Code:
+[`tarski_dre/`](tarski_dre/); API: [`forensic_app/dre_api.py`](forensic_app/dre_api.py). Best quality
+with `mistral-small`.
 
 ## Layout
 - `forensic_app/` — FastAPI app, static UI, launchers, updater, desktop packaging

@@ -36,7 +36,11 @@ def register_dre(app, HERE, DATA):
         sys.path.insert(0, DRE_DIR)
 
     SAMPLE_EPISODE = os.path.join(RES_DIR, "sample_episode.jsonl")
-    DEFAULT_TAXONOMY = os.path.join(RES_DIR, "demo_taxonomy.md")
+    # Ship the full Canonical Taxonomy of Learning Capabilities v3.1 (137 constructs / 10 domains) as the
+    # default; a tiny demo_taxonomy.md is kept as a lightweight fallback. Users can still upload their own.
+    DEFAULT_TAXONOMY = os.path.join(RES_DIR, "taxonomy_v3_1.md")
+    if not os.path.exists(DEFAULT_TAXONOMY):
+        DEFAULT_TAXONOMY = os.path.join(RES_DIR, "demo_taxonomy.md")
 
     def _ollama_host():
         return os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")

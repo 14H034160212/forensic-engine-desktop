@@ -41,9 +41,13 @@ def _post(body, timeout=60):
         return json.load(r)
 
 def _choice_question(instructions, options):
-    """Build one Choice question. Options are sent under several plausible keys so we are robust to the
-    exact field name the API expects; probe() confirms the real one against the live service."""
-    return {"type": "choice", "instructions": instructions, "options": options, "choices": options}
+    """Build one Choice question. The /v1/systemone contract (TypeSafe, and self-hosted servers like
+    jeff/Kev) takes the option set as `criteria` — a dict of option -> optional description; we also
+    send `options`/`choices` lists so we are robust across server variants. probe() confirms the exact
+    shape against whichever live service JEV_ENDPOINT points at."""
+    return {"type": "choice", "instructions": instructions,
+            "criteria": {o: None for o in options},
+            "options": options, "choices": options}
 
 def probe():
     """Send one minimal Choice request and return the RAW response, to pin the exact schema live."""
