@@ -130,6 +130,18 @@ def run(tax, ep, obs, outdir, progress=None):
             except Exception: pass
     os.makedirs(outdir, exist_ok=True)
     brief = evidence_brief(ep, obs)
+    # Evidence selection: on a large Episode the single global brief truncates most of the learner's
+    # text. When enabled, build a focused, budgeted brief PER DOMAIN instead (keeps the learner's own
+    # text, ranks the rest by relevance to that domain). Default off for backward compatibility.
+    use_select = os.environ.get("DRE_EVIDENCE_SELECT", "0").strip().lower() not in ("0", "false", "no", "")
+    _select = None
+    if use_select:
+        try:
+            import evidence_select as _select
+            print("  [evidence selection: per-domain, budgeted]", flush=True)
+        except Exception as e:
+            print(f"  [evidence_select unavailable ({e}) → single global brief]", flush=True)
+            _select = None
     stamp = {"construct id stamped per finding": True, "taxonomy_version": tax["version"],
              "taxonomy_sha256": tax["sha256"]}
     # Pass 1-3: coverage traversal + evaluation, domain by domain (coarse-to-fine)
@@ -138,6 +150,7 @@ def run(tax, ep, obs, outdir, progress=None):
     for c in tax["constructs"].values():
         all_constructs_by_dom.setdefault(c["domain"], []).append(c)
     findings_in_play = []
+    evidence_manifest = {}   # per-domain: which event seqs actually reached the reasoner (selection audit)
     CHUNK = 12   # cap constructs per LLM call so the JSON reply is never truncated (fixes large domains like D06)
     # Decision backend for the coverage classification step: 'local' (LLM, default) or 'jev' (TypeSafe
     # System One typed decisions). Report SYNTHESIS always stays local — Jev does not generate text.
@@ -166,9 +179,16 @@ def run(tax, ep, obs, outdir, progress=None):
         dom = tax["domains"][did]
         cons = all_constructs_by_dom.get(did, [])
         _p("domain", di, ndoms, f"{did} — {dom['name']}")
+        dom_brief = brief
+        if _select is not None:
+            try:
+                dom_brief, _seqs = _select.brief_for_domain(ep, obs, dom, cons)
+                evidence_manifest[did] = _seqs
+            except Exception:
+                dom_brief = brief
         merged = {"domain_relevance": "", "constructs": []}
         for i in range(0, len(cons), CHUNK):
-            part = classify(dom, cons[i:i+CHUNK], brief)
+            part = classify(dom, cons[i:i+CHUNK], dom_brief)
             if part.get("domain_relevance") and not merged["domain_relevance"]:
                 merged["domain_relevance"] = part["domain_relevance"]
             merged["constructs"].extend(part.get("constructs", []))
@@ -194,7 +214,9 @@ def run(tax, ep, obs, outdir, progress=None):
                                                "started_at","ended_at","providers","capture_gaps")},
                 "taxonomy": {"version": tax["version"], "sha256": tax["sha256"]},
                 "observations": obs, "coverage_walk": domain_results,
-                "constructs_in_play": findings_in_play}
+                "constructs_in_play": findings_in_play,
+                "evidence_manifest": evidence_manifest,
+                "integrity": ep.get("integrity", {})}
     json.dump(internal, open(os.path.join(outdir, "internal_consideration.json"), "w"), indent=2)
     json.dump(report, open(os.path.join(outdir, "report.json"), "w"), indent=2)
     json.dump(student, open(os.path.join(outdir, "student.json"), "w"), indent=2)
