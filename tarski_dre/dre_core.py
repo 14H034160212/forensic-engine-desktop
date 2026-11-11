@@ -152,9 +152,25 @@ def ingest(events):
     ep["final_text"] = (fin[0].get("text") if fin else "") or ""
     ep["final_chars"] = int(_g(fin[0], "chars", default=0)) if fin else 0
 
-    # AI turns: prompts and responses, paired loosely by conversation + ordinal/sequence
+    # AI turns: prompts and responses, paired loosely by conversation + ordinal/sequence.
+    # IMPORTANT: on the 3.4x+ format the real AI content lives in AI_RESPONSE_AMENDED (the final captured
+    # version) and AI_MESSAGE_OBSERVED, not in AI_RESPONSE (which is a short stub). Merge all three and
+    # de-duplicate by content hash, keeping the LONGEST text for each distinct message — otherwise the
+    # engine never sees the AI's actual deliverables (the defect that hid the lost-provenance-column
+    # finding on the Market Analysis Episode).
     prompts = by_kind.get("AI_PROMPT") or []
-    responses = by_kind.get("AI_RESPONSE") or []
+    _resp_raw = (by_kind.get("AI_RESPONSE") or []) + (by_kind.get("AI_RESPONSE_AMENDED") or []) \
+                + (by_kind.get("AI_MESSAGE_OBSERVED") or [])
+    _best = {}
+    for r in _resp_raw:
+        txt = _g(r, "text")
+        if not txt:
+            continue
+        key = _g(r, "content_sha256") or (_g(r, "message_id"), _g(r, "message_ordinal")) or r.get("event_id")
+        cur = _best.get(key)
+        if cur is None or len(txt) > len(_g(cur, "text") or ""):
+            _best[key] = r
+    responses = sorted(_best.values(), key=lambda e: int(_g(e, "global_sequence", default=0)))
     resp_started = _of(by_kind, "RESP_STARTED")
     turns = []
     for p in prompts:
