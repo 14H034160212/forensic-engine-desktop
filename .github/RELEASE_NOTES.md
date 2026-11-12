@@ -4,7 +4,7 @@
 |---|---|
 | **macOS** (Apple Silicon M1–M4) | `ForensicEngine-mac-arm64.dmg` |
 | **Windows** 10/11 (64-bit) | `ForensicEngine-windows-x64-setup.exe` (or `.msi`) |
-| **Linux** (x64) | `ForensicEngine-linux-x64.AppImage` (or `.deb`) |
+| **Linux** (x64) | `ForensicEngine-linux-x64.AppImage` |
 
 Everything runs locally — nothing leaves your machine. On first launch the app installs the local AI
 runtime (Ollama) and downloads a model (~4.7 GB) automatically (Linux: install [Ollama](https://ollama.com/download) yourself).

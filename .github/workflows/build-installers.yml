@@ -1,6 +1,6 @@
 name: Build installers (Tauri)
 
-# Produces real installers (.dmg / .msi / .nsis / .AppImage / .deb) by wrapping the PyInstaller
+# Produces real installers (.dmg / .msi / .nsis / .AppImage) by wrapping the PyInstaller
 # binary as a Tauri sidecar, and on a v* tag publishes them to a GitHub Release.
 on:
   workflow_dispatch:
@@ -108,8 +108,8 @@ jobs:
               cp "$B"/nsis/*-setup.exe release_assets/ForensicEngine-windows-x64-setup.exe
               cp "$B"/msi/*.msi        release_assets/ForensicEngine-windows-x64.msi ;;
             Linux)
-              cp "$B"/appimage/*.AppImage release_assets/ForensicEngine-linux-x64.AppImage
-              cp "$B"/deb/*.deb           release_assets/ForensicEngine-linux-x64.deb ;;
+              # (no .deb: tauri.conf.json bundle targets are dmg/msi/appimage/nsis)
+              cp "$B"/appimage/*.AppImage release_assets/ForensicEngine-linux-x64.AppImage ;;
           esac
           ls -la release_assets
 
