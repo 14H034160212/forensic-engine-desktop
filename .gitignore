@@ -11,7 +11,11 @@ tarski_dre/ab_result.json
 forensic_app/uploads/
 forensic_app/download/
 node_modules/
-src-tauri/target/
-src-tauri/binaries/
+**/src-tauri/target/
+**/src-tauri/binaries/
 local_deploy.zip
 .DS_Store
+.venv/
+**/src-tauri/icons/
+**/src-tauri/gen/
+.venv311/

@@ -215,11 +215,38 @@ def _is_self():
     """True when this process IS the upstream (demo server) — no point checking itself."""
     return os.environ.get("IS_UPSTREAM", "").strip() in ("1", "true", "yes")
 
+# Installers published by CI (.github/workflows/build-installers.yml) under FIXED file names, so
+# /releases/latest/download/<name> always resolves to the newest version without editing this page.
+RELEASES_URL = os.environ.get("RELEASES_URL",
+                              "https://github.com/14H034160212/forensic-engine-desktop/releases")
+INSTALLERS = [   # (os key, label, file, note)
+    ("mac", "macOS (Apple Silicon)", "ForensicEngine-mac-arm64.dmg",
+     "Open the .dmg and drag Forensic Engine into Applications. First launch: if macOS says it can't "
+     "verify the developer, open System Settings → Privacy &amp; Security and click <b>Open Anyway</b> (once).<br>"
+     "<span class=zh>打开 .dmg,把 Forensic Engine 拖进「应用程序」。首次打开若提示无法验证开发者:"
+     "系统设置 → 隐私与安全性 → 点「仍要打开」(只需一次)。</span>"),
+    ("win", "Windows 10/11 (64-bit)", "ForensicEngine-windows-x64-setup.exe",
+     "Run the installer (no admin needed). If SmartScreen warns, click <b>More info → Run anyway</b>.<br>"
+     "<span class=zh>运行安装程序(无需管理员)。若 SmartScreen 拦截:点「更多信息 → 仍要运行」。</span>"),
+    ("linux", "Linux (x64 AppImage)", "ForensicEngine-linux-x64.AppImage",
+     "<code>chmod +x</code> the file and run it. Install <a href='https://ollama.com/download'>Ollama</a> first.<br>"
+     "<span class=zh>加执行权限后运行;需先自行安装 Ollama。</span>"),
+]
+
+def _installers_html():
+    rows = []
+    for key, label, fname, note in INSTALLERS:
+        url = f"{RELEASES_URL}/latest/download/{fname}"
+        rows.append(f"<div class=os data-os={key}><a class=btn href='{url}'>⬇ {label}</a>"
+                    f"<input class=lnk readonly value='{url}' onclick='this.select()'>"
+                    f"<p class=note>{note}</p></div>")
+    return "\n".join(rows)
+
 @app.get("/download", response_class=HTMLResponse)
 def download():
-    """Landing page: download the bundle + a copy-paste prompt to let local Claude Code deploy it."""
+    """Landing page: per-OS installers first (detected OS on top), then the developer bundle."""
     return """<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Forensic Engine — local deploy</title>
+<title>Forensic Engine — download</title>
 <style>body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;max-width:720px;
 margin:0 auto;padding:40px 22px;line-height:1.6;color:#15212B;background:#EDF1F3}
 h1{font-family:Georgia,serif;font-weight:600;font-size:28px;margin:0 0 4px}
@@ -229,11 +256,36 @@ border-radius:8px;font-weight:600;margin:8px 0 22px}
 ol{padding-left:22px} li{margin:0 0 10px}
 pre{background:#10333A;color:#E7EEF0;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:13px;white-space:pre-wrap}
 code{background:#dde7ea;padding:1px 6px;border-radius:3px;font-size:13px}
-.zh{color:#5A6B78;font-size:14px}</style>
+.zh{color:#5A6B78;font-size:14px}
+h2{font-family:Georgia,serif;font-weight:600;font-size:20px;margin:30px 0 6px}
+.os{background:#fff;border-radius:10px;padding:4px 18px 10px;margin:0 0 12px}
+.os a.btn{margin:12px 0 6px}
+.os.mine{outline:2px solid #0E6E78}
+.lnk{display:none;width:100%;box-sizing:border-box;font:12px ui-monospace,Menlo,Consolas,monospace;
+padding:8px;border:1px solid #c9d6da;border-radius:6px;margin:10px 0 4px;background:#f6f9fa}
+.app .lnk{display:block} .app .os a.btn{display:none}
+.note{font-size:14px;margin:4px 0 0}
+#appnote{display:none} .app #appnote{display:block}</style>
 <a href="/" style="display:inline-block;margin-bottom:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#0E6E78;text-decoration:none">&#8592; Back to the app</a>
-<h1>Forensic Engine — run it on your own laptop</h1>
-<p class=sub>Downloads a self-contained bundle. Everything runs locally; nothing leaves your machine.<br>
-<span class=zh>下载一个自包含部署包,整套在本机运行,数据不出你的电脑。</span></p>
+<h1>Forensic Engine — download</h1>
+<p class=sub>A desktop app. Everything runs locally; nothing leaves your machine. On first launch it
+sets up the local AI runtime (Ollama) and downloads a model (~4.7 GB) automatically.<br>
+<span class=zh>桌面应用,全部在本机运行,数据不出你的电脑。首次启动会自动安装本地 AI 运行环境(Ollama)并下载模型(约 4.7GB)。</span></p>
+<p id=appnote class=sub>You're already in the app. Copy a link below to send it to someone else.<br>
+<span class=zh>你已经在使用本应用。复制下面的链接发给别人即可。</span></p>
+<div id=installers>""" + _installers_html() + """</div>
+<p class=sub>Older versions &amp; release notes: <a href='""" + RELEASES_URL + """'>""" + RELEASES_URL + """</a></p>
+<script>
+(function(){
+  if (window.__TAURI__) document.body.classList.add("app");   // in-app: show copyable links, not buttons
+  var ua = navigator.userAgent, os = /Mac/.test(ua) ? "mac" : /Win/.test(ua) ? "win" : /Linux/.test(ua) ? "linux" : "";
+  var box = document.getElementById("installers"), mine = os && box.querySelector("[data-os=" + os + "]");
+  if (mine) { mine.classList.add("mine"); box.insertBefore(mine, box.firstChild); }
+})();
+</script>
+<h2>For developers: run from source</h2>
+<p class=sub>A self-contained source bundle, installed by Claude Code.<br>
+<span class=zh>源码部署包,用 Claude Code 自动安装。</span></p>
 <a class=btn href="/local_deploy.zip">⬇ Download local_deploy.zip</a>
 <ol>
 <li><b>Unzip</b> it. / <span class=zh>解压。</span></li>

@@ -94,17 +94,31 @@ jobs:
           # pin the build target to the host so it matches the sidecar name we placed
           cargo tauri build --target "$TRIPLE"
 
+      # Fixed, version-less file names: README and the in-app /download page link to
+      # releases/latest/download/<name>, which then always serves the newest version.
+      - name: Stable download names
+        run: |
+          B=$(echo forensic_app/desktop/tauri/src-tauri/target/*/release/bundle)
+          mkdir -p release_assets
+          case "$RUNNER_OS" in
+            macOS)
+              case "$(uname -m)" in arm64) A=arm64;; *) A=x64;; esac
+              cp "$B"/dmg/*.dmg "release_assets/ForensicEngine-mac-$A.dmg" ;;
+            Windows)
+              cp "$B"/nsis/*-setup.exe release_assets/ForensicEngine-windows-x64-setup.exe
+              cp "$B"/msi/*.msi        release_assets/ForensicEngine-windows-x64.msi ;;
+            Linux)
+              cp "$B"/appimage/*.AppImage release_assets/ForensicEngine-linux-x64.AppImage
+              cp "$B"/deb/*.deb           release_assets/ForensicEngine-linux-x64.deb ;;
+          esac
+          ls -la release_assets
+
       - name: Upload installers (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.os }}
-          path: |
-            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.dmg
-            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.msi
-            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.exe
-            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.AppImage
-            forensic_app/desktop/tauri/src-tauri/target/**/release/bundle/**/*.deb
-          if-no-files-found: warn
+          path: release_assets/*
+          if-no-files-found: error
 
   # Publish all installers to a GitHub Release when a v* tag is pushed → a stable download page.
   release:
@@ -114,6 +128,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4          # for the per-OS install notes below
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -121,5 +136,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/**/*
+          body_path: .github/RELEASE_NOTES.md
           generate_release_notes: true
           fail_on_unmatched_files: false

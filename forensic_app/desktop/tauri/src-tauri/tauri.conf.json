@@ -32,6 +32,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/engine-server"]
+    "externalBin": ["binaries/engine-server"],
+    "macOS": {
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist"
+    }
   }
 }

@@ -1,5 +1,21 @@
 # Native desktop build (zero-Python client)
 
+## Layout
+```
+desktop/
+  entry.py            shared engine launcher (all OSes)
+  platforms/          per-OS behaviour, same 3 functions in each:
+    mac.py              find/install Ollama, parent-process check
+    windows.py
+    linux.py
+  mac/                macOS: build_mac.sh (one-shot .dmg) + README
+  windows/            Windows: README (installers are built in CI)
+  build.sh / build.bat  engine-only PyInstaller build (used by CI and build_mac.sh)
+  tauri/              native window + installers (shared by all OSes)
+```
+Release downloads use fixed names (`ForensicEngine-mac-arm64.dmg`, `ForensicEngine-windows-x64-setup.exe`,
+`ForensicEngine-linux-x64.AppImage`), so `releases/latest/download/<name>` always serves the newest version.
+
 Package the Forensic Engine into a **single native executable** so an end user runs it with
 **no Python install** — double-click, it starts the local server and opens the browser.
 

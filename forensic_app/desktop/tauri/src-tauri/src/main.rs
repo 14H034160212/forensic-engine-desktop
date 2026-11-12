@@ -7,9 +7,16 @@
 
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::Manager;
-use tauri_plugin_shell::{process::CommandEvent, ShellExt};
+use tauri_plugin_shell::{
+    process::{CommandChild, CommandEvent},
+    ShellExt,
+};
+
+// Handle to the spawned engine so RunEvent::Exit can kill it.
+struct EngineChild(Mutex<Option<CommandChild>>);
 
 fn port_file() -> PathBuf {
     let home = std::env::var("USERPROFILE")
@@ -42,8 +49,12 @@ fn main() {
                 .shell()
                 .sidecar("engine-server")
                 .expect("sidecar 'engine-server' not found")
-                .env("NO_BROWSER", "1");
-            let (mut rx, _child) = sidecar.spawn().expect("failed to spawn sidecar");
+                .env("NO_BROWSER", "1")
+                // the engine polls this PID and exits when we're gone (covers crash / force-quit)
+                .env("FE_PARENT_PID", std::process::id().to_string());
+            let (mut rx, child) = sidecar.spawn().expect("failed to spawn sidecar");
+            // keep the handle so we can kill the engine on a normal quit (see RunEvent::Exit below)
+            app.manage(EngineChild(Mutex::new(Some(child))));
             tauri::async_runtime::spawn(async move {
                 while let Some(ev) = rx.recv().await {
                     match ev {
@@ -84,6 +95,16 @@ fn main() {
             });
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Forensic Engine");
+        .build(tauri::generate_context!())
+        .expect("error while building Forensic Engine")
+        .run(|app, event| {
+            // Cmd+Q / closing the last window: stop the Python engine instead of orphaning it.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<EngineChild>() {
+                    if let Some(child) = state.0.lock().unwrap().take() {
+                        let _ = child.kill();
+                    }
+                }
+            }
+        });
 }

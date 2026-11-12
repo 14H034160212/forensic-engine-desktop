@@ -13,6 +13,8 @@ bundle it. If Ollama isn't running, the UI still loads and shows the problem on 
 """
 import os, sys, time, threading, webbrowser, urllib.request, shutil, subprocess, traceback, datetime, socket
 
+import platforms          # per-OS behaviour: platforms/mac.py, platforms/windows.py, platforms/linux.py
+
 # Force UTF-8 everywhere — on a Chinese/Japanese Windows the default codec is GBK/CP932, which
 # crashes when writing findings that contain characters like '‑' (non-breaking hyphen).
 for _s in (sys.stdout, sys.stderr):
@@ -56,7 +58,10 @@ NO_BROWSER = os.environ.get("NO_BROWSER", "").strip() in ("1", "true", "yes")
 LOG_PATH = os.path.join(DATA_DIR, "engine.log")
 def log(msg):
     line = f"{datetime.datetime.now().isoformat(timespec='seconds')}  {msg}"
-    print(line, flush=True)
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass        # stdout is a pipe to the Tauri shell; once the shell exits it's broken (BrokenPipeError)
     try:
         os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as f:
@@ -83,40 +88,38 @@ def _write_setup(stage, percent=None, message="", done=False, error=""):
     except Exception:
         pass
 
+class _PlatformCtx:
+    """Helpers handed to platforms.<os>.install_ollama() so platform code never imports entry.py."""
+    log = staticmethod(log)
+    ollama_up = staticmethod(lambda: _ollama_up())
+    ollama_found = staticmethod(lambda: _ollama_binary() is not None)
+    @staticmethod
+    def download(url, dst, label):
+        """urlretrieve with % published to the setup file, so a ~200MB download isn't a silent wait."""
+        def hook(blocks, bsize, total):
+            if total and total > 0:
+                pct = min(100, int(blocks * bsize * 100 / total))
+                _write_setup("install-ollama", pct, f"{label}... {pct}%")
+        urllib.request.urlretrieve(url, dst, reporthook=hook)
+
 def _ollama_binary():
-    """Find an ollama executable: PATH, a bundled sidecar next to us, or the standard Windows install."""
+    """Find an ollama executable: PATH, a bundled sidecar next to us, or the OS's standard install
+    locations (see platforms/<os>.py)."""
     exe = shutil.which("ollama")
     if exe: return exe
-    cands = []
     here = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
-    cands += [os.path.join(here, "ollama.exe"), os.path.join(here, "ollama")]
-    if os.name == "nt":
-        la = os.environ.get("LOCALAPPDATA", "")
-        if la: cands.append(os.path.join(la, "Programs", "Ollama", "ollama.exe"))
+    cands = [os.path.join(here, "ollama.exe"), os.path.join(here, "ollama")]
+    cands += platforms.ollama_candidates()
     for c in cands:
         if c and os.path.exists(c): return c
     return None
 
 def _install_ollama():
-    """Auto-install Ollama with no manual step. Windows: download the official installer and run it
-    silently (per-user, no admin). Other OSes: best-effort; else the UI guides to the download page."""
+    """Auto-install Ollama with no manual step — how is per-OS, in platforms/<os>.py.
+    If it fails, the UI guides the user to the download page."""
     _write_setup("install-ollama", None, "Installing the local AI runtime (Ollama)...")
     try:
-        if os.name == "nt":
-            import tempfile
-            dst = os.path.join(tempfile.gettempdir(), "OllamaSetup.exe")
-            log("  downloading Ollama installer...")
-            urllib.request.urlretrieve("https://ollama.com/download/OllamaSetup.exe", dst)
-            # We don't know if Ollama's installer is Inno or NSIS, so try both silent conventions,
-            # then fall back to a normal (click-through) run. Stop as soon as ollama appears.
-            for flags in (["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], ["/S"], []):
-                try:
-                    subprocess.run([dst] + flags, timeout=600)
-                except Exception:
-                    continue
-                if _ollama_binary() or _ollama_up():
-                    return True
-            return _ollama_binary() is not None or _ollama_up()
+        return bool(platforms.install_ollama(_PlatformCtx))
     except Exception:
         log("  ! auto-install Ollama failed:\n" + traceback.format_exc())
     return False
@@ -200,8 +203,28 @@ def _open_browser():
             time.sleep(0.5)
     webbrowser.open(url)
 
+def _watch_parent():
+    """Exit when the Tauri shell that launched us is gone. Without this, quitting the app (or the
+    shell crashing / being force-quit) leaves this Python server running in the background forever —
+    a PyInstaller onefile child is reparented to launchd/init, so it never sees the window close."""
+    try:
+        ppid = int(os.environ.get("FE_PARENT_PID", "0"))
+    except ValueError:
+        ppid = 0
+    if ppid <= 0:
+        return                                   # not launched by the shell (dev run / CLI) → no-op
+    def loop():
+        try:
+            while platforms.parent_alive(ppid):
+                time.sleep(2)
+            log("  shell exited -> shutting down engine")
+        finally:
+            os._exit(0)          # never let a logging error keep the orphan alive
+    threading.Thread(target=loop, daemon=True).start()
+
 def main():
     log(f"Forensic Engine starting (port {PORT}, frozen={getattr(sys,'frozen',False)})")
+    _watch_parent()
     try:
         # First-run auto-setup (install Ollama if missing, pull the default model) runs in the BACKGROUND
         # so the window opens instantly and shows a progress banner instead of blocking on a GB download.

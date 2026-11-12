@@ -4,6 +4,18 @@ A blind, fully-local document reasoning engine with a web UI. Upload a document 
 reasoning-excavation + deterministic unit-economics engine runs entirely on local hardware
 (via [Ollama](https://ollama.com)) → an interactive report. **Nothing leaves the machine.**
 
+## Download
+
+| Platform | Installer (always the latest version) |
+|---|---|
+| **macOS** (Apple Silicon) | [ForensicEngine-mac-arm64.dmg](https://github.com/14H034160212/forensic-engine-desktop/releases/latest/download/ForensicEngine-mac-arm64.dmg) |
+| **Windows** 10/11 | [ForensicEngine-windows-x64-setup.exe](https://github.com/14H034160212/forensic-engine-desktop/releases/latest/download/ForensicEngine-windows-x64-setup.exe) |
+| **Linux** | [ForensicEngine-linux-x64.AppImage](https://github.com/14H034160212/forensic-engine-desktop/releases/latest/download/ForensicEngine-linux-x64.AppImage) |
+
+First launch installs the local AI runtime (Ollama) and downloads a model automatically.
+Install notes: [macOS](forensic_app/desktop/mac/README.md) · [Windows](forensic_app/desktop/windows/README.md) ·
+[all releases](https://github.com/14H034160212/forensic-engine-desktop/releases).
+
 ## Run from source
 ```bash
 cd forensic_app
