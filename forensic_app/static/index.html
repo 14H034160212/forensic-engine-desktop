@@ -108,6 +108,8 @@
   .conf .top{font-weight:600;font-size:15px} .conf .d{font-size:13.5px;margin-top:6px} .conf .d b{color:var(--accent)} .conf .why{font-style:italic;color:var(--muted);font-size:13px;margin-top:6px}
   .empty{color:var(--muted);font-size:14px;padding:24px;text-align:center}
   .gpu-line{display:inline-block;font-family:var(--mono);font-size:11px;border:1px solid var(--rule);border-radius:20px;padding:3px 11px;color:var(--muted);margin:0 0 14px}
+  /* No PDF engine in this install (desktop app) → hide every Export PDF link (see /api/caps) */
+  body.nopdf a[href^="/api/export/"], body.nopdf #exportlink, body.nopdf #exportlinkx{display:none}
 </style>
 <div class="topbar">
   <span class="brand">Forensic Engine</span>
@@ -1103,6 +1105,10 @@ function renderFixList(R){
 (function(){ var _f=window.fetch; window.fetch=function(u,o){ o=o||{}; o.headers=Object.assign({"ngrok-skip-browser-warning":"true"}, o.headers||{}); return _f.call(window,u,o); }; })();
 function api(p,opt){ return fetch(p,opt).then(function(r){return r.json();}); }
 
+// ---------- optional features ----------
+api("/api/caps").then(function(c){ if(!c || !c.pdf_export) document.body.classList.add("nopdf"); })
+  .catch(function(){ document.body.classList.add("nopdf"); });
+
 // ---------- models ----------
 var MODEL_LABELS={
   "llama3.2:3b":"Llama 3.2 3B — fastest",
@@ -1113,16 +1119,18 @@ var MODEL_LABELS={
   "L3370B:latest":"Llama 3.3 70B — most accurate",
   "deepseek-r1:32b":"DeepSeek-R1 32B — reasoning"
 };
-// Per-model typical end-to-end estimate (local, four streamed stages). Big models also carry a
-// one-time download on first use, which is shown separately as a progress bar while it pulls.
+// Per-model typical end-to-end estimate ON A LAPTOP (local, all stages incl. rulebook). Anchored on a
+// measured run: qwen2.5-coder:7b on a 16 GB Apple-Silicon Mac took ~4.7 min (GPU). The old figures
+// ("~30–60s" for 7B) came from the multi-GPU demo server and were 5-10x optimistic on a laptop.
+// The machine-specific estimate under the dropdown replaces this after the first run.
 var MODEL_ETA={
-  "llama3.2:3b":"~20–40s",
-  "qwen2.5-coder:7b":"~30–60s",
-  "qwen2.5-coder:32b":"~2–3 min",
-  "gpt-oss:20b":"~2–4 min",
-  "gemma4:26b":"~3–5 min",
-  "L3370B:latest":"~4–6 min",
-  "deepseek-r1:32b":"~3–5 min"
+  "llama3.2:3b":"~2–4 min",
+  "qwen2.5-coder:7b":"~4–6 min",
+  "qwen2.5-coder:32b":"~20+ min",
+  "gpt-oss:20b":"~8–15 min",
+  "gemma4:26b":"~15–25 min",
+  "L3370B:latest":"30+ min",
+  "deepseek-r1:32b":"~20+ min"
 };
 function isBigModel(m){ return /20b|26b|27b|30b|32b|70b|:latest/i.test(m||""); }
 function modelLabel(m){
@@ -1173,7 +1181,7 @@ api("/api/ollama").then(function(o){
   if(!o) return;
   var msg="", col="#B3261E";
   if(!o.running){ msg="⚠ Ollama not running — analysis needs it. Install/start from <a href='https://ollama.com/download' target='_blank' style='color:#9FE3DE'>ollama.com/download</a>, then reload."; }
-  else if(!o.has_wanted){ msg="⚠ Ollama is running but no model is pulled — run <code style='background:#0b2a30;padding:1px 5px;border-radius:3px'>ollama pull llama3.2:3b</code>."; col="#A9750F"; }
+  else if(!o.has_wanted){ msg="⚠ Ollama is running but no model is pulled — run <code style='background:#0b2a30;padding:1px 5px;border-radius:3px'>ollama pull "+esc(o.default||"qwen2.5-coder:7b")+"</code>."; col="#A9750F"; }
   if(!msg) return;
   var bar=document.createElement("div");
   bar.style.cssText="position:sticky;top:0;z-index:70;background:#10333A;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;display:flex;gap:10px;align-items:center;justify-content:center;border-bottom:2px solid "+col;
@@ -1183,7 +1191,6 @@ api("/api/ollama").then(function(o){
 
 // ---------- app detection + external-open (fixes Tauri blocking target=_blank) ----------
 var IS_APP = !!(window.__TAURI__);
-var PUB = "https://chivalry-premises-ferocity.ngrok-free.dev";   // public demo/download host (update when the permanent domain is live)
 // The Tauri webview blocks BOTH target=_blank/window.open AND IPC from this localhost-served page, so
 // external-open is impossible here. Same-ORIGIN navigation to the app's own pages DOES work — so the
 // sidebar links just navigate to the local /download and /laptop pages (served by the bundled server),
@@ -1222,15 +1229,12 @@ api("/api/version").then(function(v){
   if(b && v && v.version) b.textContent="v"+v.version;
 }).catch(function(){});
 if(IS_APP){
-  // Packaged app self-update path: compare this build to the public host's latest, and if newer turn
-  // "Get the app" into an Update action that opens the download page in the system browser. (Full
-  // one-click auto-update via tauri-plugin-updater comes once the permanent update URL is live.)
-  Promise.all([
-    api("/api/version").then(function(v){return v&&v.version||null;}).catch(function(){return null;}),
-    fetch(PUB+"/api/version").then(function(r){return r.json();}).then(function(v){return v&&v.version||null;}).catch(function(){return null;})
-  ]).then(function(r){
-    var cur=r[0], latest=r[1];
-    if(!cur || !latest || !(latest>cur)) return;         // date-string YYYY.MM.DD-N compares correctly
+  // Packaged app self-update path: the local server asks GitHub Releases for the latest tag (numeric
+  // version compare server-side), and if newer turns "Get the app" into an Update action that opens
+  // the download page. Only the release tag is fetched — no document data leaves the machine.
+  api("/api/update-check?channel=app").then(function(u){
+    if(!u || !u.available) return;
+    var cur=u.current, latest=u.latest;
     var g=document.getElementById("getapp"); if(g) g.innerHTML="⬆ Update to v"+esc(latest);
     var bar=document.createElement("div");
     bar.style.cssText="position:sticky;top:0;z-index:60;background:#10333A;color:#E7EEF0;font-family:var(--mono);font-size:12.5px;padding:9px 16px;display:flex;gap:10px;align-items:center;justify-content:center;border-bottom:1px solid #0b2a30";

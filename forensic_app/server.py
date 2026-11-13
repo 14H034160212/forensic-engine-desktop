@@ -175,11 +175,36 @@ def version():
     """This install's version — also the source-of-truth 'latest' when hit on the demo server."""
     return {"version": _local_version(), "source": UPDATE_SOURCE}
 
+def _ver_tuple(v):
+    """'0.10.2' -> (0, 10, 2) so versions compare numerically ('0.10' > '0.9'); junk -> ()."""
+    try:
+        return tuple(int(x) for x in str(v).strip().lstrip("v").split("-")[0].split("."))
+    except Exception:
+        return ()
+
+def _github_latest():
+    """Latest published release tag (e.g. '0.6.4') from GitHub, or None when offline."""
+    import urllib.request
+    api = RELEASES_URL.replace("https://github.com/", "https://api.github.com/repos/") + "/latest"
+    req = urllib.request.Request(api, headers={"Accept": "application/vnd.github+json",
+                                                "User-Agent": "forensic-engine-update-check"})
+    with urllib.request.urlopen(req, timeout=4) as r:
+        return (json.loads(r.read().decode()).get("tag_name") or "").lstrip("v") or None
+
 @app.get("/api/update-check")
-def update_check():
-    """Ask the upstream demo server for the latest version and compare. Graceful when offline:
+def update_check(channel: str = ""):
+    """Compare this install to the latest version. channel=app (the packaged desktop app) asks GitHub
+    Releases — the only thing sent is an anonymous request for the release tag. Otherwise (source /
+    zip installs, updated via ./update.sh) it asks the upstream demo server. Graceful when offline:
     returns available=False / latest=None rather than erroring."""
     cur = _local_version()
+    if channel == "app":
+        try:
+            latest = _github_latest()
+        except Exception:
+            return {"current": cur, "latest": None, "available": False, "offline": True}
+        return {"current": cur, "latest": latest, "url": RELEASES_URL + "/latest",
+                "available": bool(latest and _ver_tuple(latest) > _ver_tuple(cur))}
     if UPDATE_SOURCE.rstrip("/").endswith("chivalry-premises-ferocity.ngrok-free.dev") and _is_self():
         return {"current": cur, "latest": cur, "available": False, "self": True}
     latest = None
@@ -192,7 +217,7 @@ def update_check():
     except Exception:
         return {"current": cur, "latest": None, "available": False, "offline": True}
     return {"current": cur, "latest": latest,
-            "available": bool(latest and latest != cur and latest != "unknown"),
+            "available": bool(latest and latest != "unknown" and _ver_tuple(latest) > _ver_tuple(cur)),
             "zip": UPDATE_SOURCE.rstrip("/") + "/local_deploy.zip"}
 
 @app.get("/api/ollama")
@@ -206,7 +231,8 @@ def ollama_status():
             tags = json.loads(r.read().decode())
         have = [m.get("name", "") for m in tags.get("models", [])]
         wanted = [m for m in MODELS if any(h == m or h.startswith(m.split(":")[0]) for h in have)]
-        return {"running": True, "models": have, "has_wanted": bool(wanted or have)}
+        return {"running": True, "models": have, "has_wanted": bool(wanted or have),
+                "default": MODELS[0]}
     except Exception:
         return {"running": False, "models": [], "has_wanted": False,
                 "install": "https://ollama.com/download"}
@@ -283,7 +309,9 @@ sets up the local AI runtime (Ollama) and downloads a model (~4.7 GB) automatica
   if (mine) { mine.classList.add("mine"); box.insertBefore(mine, box.firstChild); }
 })();
 </script>
-<h2>For developers: run from source</h2>
+""" + _dev_section()
+
+_DEV_BUNDLE_HTML = """<h2>For developers: run from source</h2>
 <p class=sub>A self-contained source bundle, installed by Claude Code.<br>
 <span class=zh>源码部署包,用 Claude Code 自动安装。</span></p>
 <a class=btn href="/local_deploy.zip">⬇ Download local_deploy.zip</a>
@@ -296,9 +324,36 @@ then paste the prompt below. It reads <code>CLAUDE.md</code> and installs + laun
 <pre>Read CLAUDE.md and follow it to install and launch this Forensic Engine locally on my machine. Detect my OS, install Ollama and the Python deps if needed, start it, and open the browser. 请读 CLAUDE.md 并照做:在我本机安装并启动这个取证引擎。</pre>
 <p class=sub>Prefer no AI? Follow <code>forensic_app/LAPTOP.md</code> (English) or <code>forensic_app/LAPTOP.zh.md</code> (中文) by hand — it's 4 steps.</p>"""
 
+def _dev_section():
+    """The source-bundle download only works where local_deploy.zip has been built (the demo server);
+    elsewhere (the desktop app) the button 404'd — point to the source on GitHub instead."""
+    if os.path.exists(os.path.join(HERE, "download", "local_deploy.zip")):
+        return _DEV_BUNDLE_HTML
+    repo = RELEASES_URL.rsplit("/releases", 1)[0]
+    return ('<h2>For developers: run from source</h2>'
+            f"<p class=sub>Source code and run-from-source steps: <a href='{repo}'>{repo}</a><br>"
+            "<span class=zh>源码与从源码运行的步骤见上面的 GitHub 仓库。</span></p>")
+
+def _installed_models():
+    """Model names Ollama has locally, or None if Ollama can't be reached."""
+    base = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    try:
+        import urllib.request
+        with urllib.request.urlopen(base + "/api/tags", timeout=2) as r:
+            return [m.get("name", "") for m in json.loads(r.read().decode()).get("models", [])]
+    except Exception:
+        return None
+
 @app.get("/api/models")
 def models():
-    return {"models": MODELS}
+    """Only offer models that are already installed: picking one that isn't silently starts a
+    multi-GB download mid-analysis (and the bigger ones don't fit a 16 GB laptop). Falls back to the
+    default model alone when nothing is installed yet / Ollama is down, so first-run auto-pull still works."""
+    have = _installed_models()
+    if have is None:
+        return {"models": MODELS[:1], "all": MODELS}
+    avail = [m for m in MODELS if m in have]
+    return {"models": avail or MODELS[:1], "all": MODELS}
 
 PROFILE_LABELS = [("pitch", "Pitch deck"), ("report", "Report / analysis"),
                   ("essay", "Essay / argument"), ("proposal", "Proposal / plan"),
@@ -430,6 +485,12 @@ def estimate(model: str, kind: str = "deck", depth: str = "fast"):
                 return {"est_s": None, "text": "impractical on CPU (tens of minutes) — prefer a 3B/7B model", "source": "band-cpu", "accel": accel}
             lo = tokens / (10 if SPEED_WEIGHT.get(model, 7) <= 3 else 5)   # conservative CPU tok/s (~3B vs ~7B)
             return {"est_s": round(lo), "text": _fmt_dur(lo) + "+ on CPU (no GPU detected)", "source": "band-cpu", "accel": accel}
+        if model in SPEED_WEIGHT:
+            # Prior anchored on a measured laptop run (qwen2.5-coder:7b, 16 GB Apple Silicon, GPU):
+            # ~280 s for a deck run ≈ 4500 tokens. Scaled by model weight and workload size.
+            est = 280 * SPEED_WEIGHT[model] / 7 * tokens / TYP_TOKENS["deck"]
+            return {"est_s": round(est), "text": _fmt_dur(est) + " on a typical laptop",
+                    "source": "scaled", "accel": accel}
         return {"est_s": None, "text": None, "source": "band-gpu", "accel": accel}
 
     # (1) exact model measured here — always most accurate, even for a big model the user chose to run
@@ -719,7 +780,7 @@ def run_stream(payload: dict):
             if USE_PACKS:
                 yield ev({"stage": "rules", "msg": "Applying the routed domain rulebook..."})
                 try:
-                    packs, routed = T.run(deck)
+                    packs, routed = T.run(deck, profile)
                 except Exception:
                     packs, routed = [], []
                 packs = _coerce([f for f in packs if isinstance(f, dict)])
@@ -728,9 +789,15 @@ def run_stream(payload: dict):
                                  f"({', '.join(routed) if routed else 'no pack matched — out of domain'})",
                           "t": round(time.time()-t0)})
 
-            yield ev({"stage": "econ", "msg": "Computing unit economics from the deck's own numbers..."})
-            econ = E.compute_economics(E.figures_for(deck))   # LLM + deterministic regex overlay
-            yield ev({"stage": "econdone", "msg": f"{len(econ['metrics'])} metrics · {econ['danger_count']} red flags", "t": round(time.time()-t0)})
+            if profile in T.NON_COMMERCIAL_PROFILES:
+                # unit economics (content spend, subscribers, CAC...) is meaningless for an essay /
+                # generic document and only produces noise; an empty result hides the section.
+                econ = {"figures": {}, "metrics": [], "danger_count": 0, "internal_only": True, "skipped": True}
+                yield ev({"stage": "econdone", "msg": f"Unit economics — skipped ({profile} document)", "t": round(time.time()-t0)})
+            else:
+                yield ev({"stage": "econ", "msg": "Computing unit economics from the deck's own numbers..."})
+                econ = E.compute_economics(E.figures_for(deck))   # LLM + deterministic regex overlay
+                yield ev({"stage": "econdone", "msg": f"{len(econ['metrics'])} metrics · {econ['danger_count']} red flags", "t": round(time.time()-t0)})
 
             yield ev({"stage": "integ", "msg": "Integrating the case..."})
             integ = E.integrate(deck, p1, p2)
@@ -870,6 +937,18 @@ def del_run(rid: str):
     return {"ok": True}
 
 # ----------------------------------------------------------------- export PDF
+def _pdf_available():
+    try:
+        import weasyprint  # noqa: F401  (needs system libs; not bundled in the desktop app)
+        return True
+    except Exception:
+        return False
+
+@app.get("/api/caps")
+def caps():
+    """Optional features this install actually has, so the UI never shows a button that can't work."""
+    return {"pdf_export": _pdf_available()}
+
 @app.get("/api/export/{rid}")
 def export_pdf(rid: str):
     p = os.path.join(RUNS, rid + ".json")

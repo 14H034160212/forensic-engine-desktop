@@ -223,9 +223,17 @@ def run_pack(deck, pack):
                         "severity": d.get("severity", "Material"), "trigger_pack": pack["id"]})
     return out
 
-def run(deck):
+# Packs that only make sense for a commercial document (fundraising / business plan). For an essay or
+# a generic document the router can still match them on business-sounding prose, and they then charge
+# investor concerns (CAC, churn, LTV>CAC) the document never claims — skip them for those profiles.
+COMMERCIAL_ONLY = {"gtm_investor"}
+NON_COMMERCIAL_PROFILES = {"essay", "generic"}
+
+def run(deck, profile=None):
     """Route, then run every applicable pack. Returns (findings, applied_pack_ids)."""
     packs = route(deck)
+    if profile in NON_COMMERCIAL_PROFILES:
+        packs = [p for p in packs if p["id"] not in COMMERCIAL_ONLY]
     out = []
     for p in packs:
         out += run_pack(deck, p)
