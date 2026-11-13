@@ -259,12 +259,54 @@ def _as_text(c):
         return json.dumps(c, ensure_ascii=False)
     return str(c)
 
+_DEDUP_STOP = set(("the a an and or of to in on for with is are be by as at it its this that from not no "
+                   "but than which their they has have was were will can does do into about over under "
+                   "more most such only also any each other own same so very just should would could may "
+                   "might must document deck claims claim plan company").split())
+
+def _content_words(f):
+    t = (str(f.get("name", "")) + " " + str(f.get("charge", ""))).lower()
+    return {w for w in re.findall(r"[a-z][a-z0-9]+", t) if len(w) > 3 and w not in _DEDUP_STOP}
+
+def _norm_title(f):
+    return re.sub(r"[^a-z0-9]+", " ", str(f.get("name", "")).lower()).strip()
+
+def drop_repeats(p2, p1):
+    """Remove Pass-Two findings that merely restate a Pass-One finding. Small models asked for
+    'at least 8 NEW findings' pad the list by rewording Pass One under the SAME title (measured on a
+    7B run: 9 of 16 'new' findings were rewordings). Deterministic, conservative: a finding is a
+    repeat if it shares a Pass-One title AND overlaps it (>=0.3 of content words), or overlaps any
+    Pass-One finding heavily (>=0.6); pincers only by the latter. Related-but-different points (e.g.
+    'AI Bias' vs 'AI Ethics', 0.5 overlap, different titles) are kept."""
+    p1d = [f for f in p1 if isinstance(f, dict)]
+    p1w = [(_norm_title(f), _content_words(f)) for f in p1d]
+    out = []
+    for f in p2:
+        if not isinstance(f, dict):
+            out.append(f); continue
+        w, t = _content_words(f), _norm_title(f)
+        # Structural contradictions ('pincers') are the engine's core output: only drop one when it
+        # is a near-copy, never merely for reusing a Pass-One topic title.
+        same_title_ok = str(f.get("type", "")).lower() != "pincer"
+        repeat = False
+        for pt, pw in p1w:
+            ov = len(w & pw) / max(1, min(len(w), len(pw)))
+            if (same_title_ok and t and t == pt and ov >= 0.3) or ov >= 0.6:
+                repeat = True; break
+        if not repeat:
+            out.append(f)
+    return out
+
 def pass_two(deck, p1_findings, claims):
-    p1_titles = "; ".join((f.get("name", "") if isinstance(f, dict) else str(f)) for f in p1_findings)
+    # Give the model what Pass One actually SAID (not just titles) so it can tell what is new.
+    p1_brief = "\n".join(
+        ("- " + str(f.get("name", "")) + ": " + str(f.get("charge", ""))[:200]) if isinstance(f, dict)
+        else ("- " + str(f)[:200]) for f in p1_findings)
     usr = (
         "Here is the document:\n\n<document>\n" + deck + "\n</document>\n\n"
-        "PASS ONE already found these issues (do NOT merely repeat them):\n" +
-        p1_titles + "\n\n"
+        "PASS ONE already found these issues (do NOT repeat or reword them — a finding with the same "
+        "topic and substance as one below is NOT new):\n" +
+        p1_brief + "\n\n"
         "Here are the excavated LEVEL-2 statements:\n- " +
         "\n- ".join(_as_text(c) for c in claims) + "\n\n"
         "PASS TWO — subject these Level-2 statements to the same forensic scrutiny. "
@@ -280,7 +322,10 @@ def pass_two(deck, p1_findings, claims):
         "Return JSON: {\"findings\": [ ... ]}. Return AT LEAST 8 NEW findings, including "
         "at least 3 of type \"pincer\" where the document contains such tensions. Every "
         "finding MUST include the load_bearing boolean.")
-    return _wrap(chat_json(_system(), usr), "findings")
+    res = _wrap(chat_json(_system(), usr), "findings")
+    if isinstance(res, dict) and isinstance(res.get("findings"), list):
+        res["findings"] = drop_repeats(res["findings"], p1_findings)
+    return res
 
 # --------------------------------------------------------------------------- #
 #  ARITHMETIC / UNIT-ECONOMICS MODULE

@@ -51,7 +51,7 @@ ssh -L 8800:127.0.0.1:8800 <user>@<this-server>
 ```
 forensic_app/
   server.py        FastAPI backend (upload, streaming run, cross-doc, history, export)
-  parsing.py       PDF / DOCX / TXT → text
+  parsing.py       PDF / DOCX / PPTX / TXT → text (clear errors for scanned / legacy / unsupported files)
   static/index.html  the web UI
   runs/            saved run history (JSON)
   start.sh         one-click launch

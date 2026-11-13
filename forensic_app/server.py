@@ -672,12 +672,19 @@ async def parse_files(files: list[UploadFile] = File(...)):
     for f in files:
         data = await f.read()
         try:
-            text = parsing.parse(f.filename, data)
-        except Exception as e:
-            text = ""
-            out.append({"filename": f.filename, "error": str(e)[:200], "chars": 0, "text": ""})
+            text, warning = parsing.parse_doc(f.filename, data)
+        except parsing.ParseError as e:            # the user's file: message is written for them
+            out.append({"filename": f.filename, "error": str(e), "chars": 0, "text": ""})
             continue
-        out.append({"filename": f.filename, "chars": len(text), "text": text})
+        except Exception as e:                     # unexpected: say so plainly, keep detail for logs
+            print(f"parse failed for {f.filename!r}: {e!r}", flush=True)
+            out.append({"filename": f.filename, "chars": 0, "text": "",
+                        "error": "This file couldn't be read. Try saving it as PDF, or paste the text instead."})
+            continue
+        doc = {"filename": f.filename, "chars": len(text), "text": text}
+        if warning:
+            doc["warning"] = warning
+        out.append(doc)
     return {"documents": out}
 
 def _pull_events(model):

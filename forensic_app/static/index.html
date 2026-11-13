@@ -147,8 +147,8 @@
       <p style="color:var(--muted);font-size:15px;margin:0 0 16px">Upload a PDF or Word deck (or paste the text). The engine runs the full blind prosecution on your own hardware — nothing leaves the building.</p>
       <div class="drop" id="drop" onclick="document.getElementById('file').click()">
         <div class="big">Drop a deck here, or click to choose</div>
-        <div class="sm">PDF · DOCX · TXT — single file</div>
-        <input type="file" id="file" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="onPick(this.files,false)">
+        <div class="sm">PDF · DOCX · PPTX · TXT — single file</div>
+        <input type="file" id="file" accept=".pdf,.docx,.pptx,.txt,.md" style="display:none" onchange="onPick(this.files,false)">
       </div>
       <textarea class="paste" id="paste" placeholder="…or paste deck text here"></textarea>
       <div id="samples" style="margin-top:10px"></div>
@@ -176,8 +176,8 @@
       <span class="gpu-line" id="gpu-cross" style="display:none">GPU …</span>
       <div class="drop" id="dropc" onclick="document.getElementById('filec').click()">
         <div class="big">Drop documents here, or click to choose</div>
-        <div class="sm">PDF · DOCX · TXT — two or more</div>
-        <input type="file" id="filec" accept=".pdf,.docx,.txt,.md" multiple style="display:none" onchange="onPick(this.files,true)">
+        <div class="sm">PDF · DOCX · PPTX · TXT — two or more</div>
+        <input type="file" id="filec" accept=".pdf,.docx,.pptx,.txt,.md" multiple style="display:none" onchange="onPick(this.files,true)">
       </div>
       <div class="files2" id="files-cross"></div>
       <div class="controls">
@@ -195,8 +195,8 @@
       <span class="gpu-line" id="gpu-excav" style="display:none">GPU …</span>
       <div class="drop" id="dropx" onclick="document.getElementById('filex').click()">
         <div class="big">Drop a document here, or click to choose</div>
-        <div class="sm">PDF · DOCX · TXT — single file</div>
-        <input type="file" id="filex" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="onPick(this.files,false,'x')">
+        <div class="sm">PDF · DOCX · PPTX · TXT — single file</div>
+        <input type="file" id="filex" accept=".pdf,.docx,.pptx,.txt,.md" style="display:none" onchange="onPick(this.files,false,'x')">
       </div>
       <textarea class="paste" id="pastex" placeholder="…or paste document text here"></textarea>
       <div id="samplesx" style="margin-top:10px"></div>
@@ -254,7 +254,7 @@
         <div class="big" style="font-size:15px">Drop a PDF / Word / text document, or click to choose</div>
         <div class="sm">or paste below</div>
       </div>
-      <input type="file" id="gfile" style="display:none" accept=".pdf,.docx,.txt">
+      <input type="file" id="gfile" style="display:none" accept=".pdf,.docx,.pptx,.txt">
       <textarea id="gtext" placeholder="…or paste document text here" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--rule);border-radius:6px;font-family:var(--sans);font-size:13px;margin:0 0 10px"></textarea>
       <div id="gstate" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:0 0 8px"></div>
       <div id="gwrap" style="display:none">
@@ -306,7 +306,7 @@
         <div class="big" style="font-size:15px">Drop a PDF / Word / text document, or click to choose</div>
         <div class="sm">or paste below</div>
       </div>
-      <input type="file" id="afile" style="display:none" accept=".pdf,.docx,.txt">
+      <input type="file" id="afile" style="display:none" accept=".pdf,.docx,.pptx,.txt">
       <textarea id="atext" placeholder="…or paste document text here" style="width:100%;min-height:90px;padding:10px;border:1px solid var(--rule);border-radius:6px;font-family:var(--sans);font-size:13px;margin:0 0 8px"></textarea>
       <div id="astate" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:0 0 6px"></div>
       <div class="log" id="alog" style="margin:0 0 12px"></div>
@@ -924,8 +924,10 @@ function loadGraphView(){
     gf.addEventListener("change",function(){ var f=gf.files[0]; if(!f)return; var fd=new FormData(); fd.append("files",f);
       document.getElementById("gstate").textContent="Reading "+f.name+"…";
       fetch("/api/parse",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(d){
-        var t=(d.documents&&d.documents[0]&&d.documents[0].text)||""; document.getElementById("gtext").value=t;
-        document.getElementById("gstate").textContent=f.name+" — "+t.length+" chars. Click Build graph."; }); });
+        var doc=(d.documents&&d.documents[0])||{}, t=doc.text||""; document.getElementById("gtext").value=t;
+        document.getElementById("gstate").textContent = doc.error ? ("⚠ "+f.name+": "+doc.error)
+          : f.name+" — "+t.length+" chars."+(doc.warning?" ⚠ "+doc.warning:"")+" Click Build graph."; })
+        .catch(function(){ document.getElementById("gstate").textContent="⚠ Couldn't read "+f.name+" — the local engine didn't respond."; }); });
     var dz=document.getElementById("gdrop");
     ["dragover","dragenter"].forEach(function(ev){dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.add("hover");});});
     ["dragleave","drop"].forEach(function(ev){dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.remove("hover");});});
@@ -1046,8 +1048,10 @@ function loadAuditView(){
     af.addEventListener("change",function(){ var f=af.files[0]; if(!f)return; var fd=new FormData(); fd.append("files",f);
       document.getElementById("astate").textContent="Reading "+f.name+"…";
       fetch("/api/parse",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(d){
-        var t=(d.documents&&d.documents[0]&&d.documents[0].text)||""; document.getElementById("atext").value=t;
-        document.getElementById("astate").textContent=f.name+" — "+t.length+" chars. Click Run audit."; }); });
+        var doc=(d.documents&&d.documents[0])||{}, t=doc.text||""; document.getElementById("atext").value=t;
+        document.getElementById("astate").textContent = doc.error ? ("⚠ "+f.name+": "+doc.error)
+          : f.name+" — "+t.length+" chars."+(doc.warning?" ⚠ "+doc.warning:"")+" Click Run audit."; })
+        .catch(function(){ document.getElementById("astate").textContent="⚠ Couldn't read "+f.name+" — the local engine didn't respond."; }); });
     var dz=document.getElementById("adrop");
     ["dragover","dragenter"].forEach(function(ev){dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.add("hover");});});
     ["dragleave","drop"].forEach(function(ev){dz.addEventListener(ev,function(e){e.preventDefault();dz.classList.remove("hover");});});
@@ -1320,6 +1324,8 @@ function onPick(fileList, isCross, which){
     else if(which==="x"){ ST.xDocs=docs.slice(0,1); if(docs[0]&&!document.getElementById("labelx").value){ document.getElementById("labelx").value=(docs[0].filename||"").replace(/\.[^.]+$/,""); } }
     else { ST.newDocs=docs.slice(0,1); if(docs[0]&&!document.getElementById("label").value){ document.getElementById("label").value=(docs[0].filename||"").replace(/\.[^.]+$/,""); } }
     renderFiles(isCross, which);
+  }).catch(function(){
+    document.getElementById(tgt).innerHTML="<div class='hm' style='font-family:monospace;font-size:11px;color:var(--fail)'>Couldn't read the file — the local engine didn't respond. Try again.</div>";
   });
 }
 function renderFiles(isCross, which){
@@ -1329,7 +1335,7 @@ function renderFiles(isCross, which){
   var box=document.getElementById(tgt); box.innerHTML="";
   arr.forEach(function(x,i){
     var d=document.createElement("div"); d.className="file2";
-    d.innerHTML="<span class='nm'>"+esc(x.filename||("Doc "+(i+1)))+"</span>"+(x.error?"<span class='ch' style='color:var(--fail)'>"+esc(x.error)+"</span>":"<span class='ch'>"+x.chars+" chars</span>")+"<span class='x'>✕</span>";
+    d.innerHTML="<span class='nm'>"+esc(x.filename||("Doc "+(i+1)))+"</span>"+(x.error?"<span class='ch' style='color:var(--fail)'>"+esc(x.error)+"</span>":"<span class='ch'>"+x.chars+" chars</span>"+(x.warning?"<span class='ch' style='color:#A9750F'>⚠ "+esc(x.warning)+"</span>":""))+"<span class='x'>✕</span>";
     d.querySelector(".x").onclick=function(){ arr.splice(i,1); renderFiles(isCross, which); };
     box.appendChild(d);
   });
@@ -1351,7 +1357,7 @@ function logStage(key,msg,done,t){
 }
 function runSingle(){
   var deck=(ST.newDocs[0]&&ST.newDocs[0].text)||document.getElementById("paste").value||"";
-  if(!deck.trim()){ alert("Upload a deck or paste text first."); return; }
+  if(!deck.trim()){ alert((ST.newDocs[0]&&ST.newDocs[0].error) ? ST.newDocs[0].error : "Upload a document or paste text first."); return; }
   var model=document.getElementById("model").value, label=document.getElementById("label").value||"Untitled deck";
   var profile=(document.getElementById("profile")||{}).value||"pitch";
   var btn=document.getElementById("runbtn"); btn.disabled=true; btn.textContent="Running…";
@@ -1398,7 +1404,7 @@ function logStageX(key,msg,done,t){
 }
 function runExcav(){
   var text=(ST.xDocs[0]&&ST.xDocs[0].text)||document.getElementById("pastex").value||"";
-  if(!text.trim()){ alert("Upload a document or paste text first."); return; }
+  if(!text.trim()){ alert((ST.xDocs[0]&&ST.xDocs[0].error) ? ST.xDocs[0].error : "Upload a document or paste text first."); return; }
   var model=document.getElementById("modelx").value, label=document.getElementById("labelx").value||"Untitled document";
   var depth=document.getElementById("depthx").value;
   var btn=document.getElementById("excavbtn"); btn.disabled=true; btn.textContent="Excavating…";
