@@ -19,3 +19,4 @@ local_deploy.zip
 **/src-tauri/icons/
 **/src-tauri/gen/
 .venv311/
+forensic_app/calib.json
