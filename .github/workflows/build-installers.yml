@@ -118,8 +118,17 @@ jobs:
         run: |
           TRIPLE=$(rustc -vV | sed -n 's/host: //p')
           rustup target add "$TRIPLE" || true
-          # pin the build target to the host so it matches the sidecar name we placed
-          cargo tauri build --target "$TRIPLE"
+          # pin the build target to the host so it matches the sidecar name we placed.
+          # Retry: on macOS, Tauri's bundle_dmg.sh intermittently fails with
+          # "hdiutil: couldn't unmount ... Resource busy" (seen locally; v0.6.7's arm64 job failed here
+          # with no code change affecting this step). Rust is cached, so a retry only re-bundles.
+          for n in 1 2 3; do
+            cargo tauri build --target "$TRIPLE" && break
+            [ "$n" = 3 ] && { echo "::error::tauri build failed 3 times"; exit 1; }
+            echo "::warning::tauri build attempt $n failed — retrying"
+            rm -rf "src-tauri/target/$TRIPLE/release/bundle/dmg"
+            sleep 15
+          done
 
       # Fixed, version-less file names: README and the in-app /download page link to
       # releases/latest/download/<name>, which then always serves the newest version.

@@ -46,8 +46,14 @@ echo "▸ [3/4] icons"
 
 echo "▸ [4/4] app + dmg (Tauri)"
 # version + mac-only bundle targets are passed as overrides, so tauri.conf.json stays untouched
-( cd "$TAURI" && cargo tauri build --target "$TRIPLE" --bundles app,dmg \
-    --config "{\"version\":\"$VERSION\"}" )
+# retry: bundle_dmg.sh intermittently fails with "hdiutil: couldn't unmount ... Resource busy"
+for n in 1 2 3; do
+  ( cd "$TAURI" && cargo tauri build --target "$TRIPLE" --bundles app,dmg \
+      --config "{\"version\":\"$VERSION\"}" ) && break
+  [ "$n" = 3 ] && { echo "✗ Tauri build failed 3 times"; exit 1; }
+  echo "  (dmg step failed — retrying, attempt $((n+1))/3)"
+  rm -rf "$TAURI/src-tauri/target/$TRIPLE/release/bundle/dmg"; sleep 10
+done
 
 OUT="$ROOT/desktop_dist/mac"; mkdir -p "$OUT"
 BUNDLE="$TAURI/src-tauri/target/$TRIPLE/release/bundle"
