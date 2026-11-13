@@ -29,6 +29,14 @@ echo "▸ [1/4] engine (PyInstaller)"
 PATH="$(dirname "$PYTHON"):$PATH" bash "$ROOT/forensic_app/desktop/build.sh" >/tmp/fe_pyinstaller.log 2>&1 \
   || { tail -30 /tmp/fe_pyinstaller.log; echo "✗ PyInstaller failed (full log: /tmp/fe_pyinstaller.log)"; exit 1; }
 
+# A python.org / setup-python CPython ships stdlib C extensions as separate lib-dynload/*.so files;
+# the onefile engine would unpack + security-check ~55 of them on every launch (~10 s slower start).
+"$PYTHON" -I -c "
+from PyInstaller.archive.readers import CArchiveReader
+n = sum('lib-dynload/' in x for x in CArchiveReader('$ROOT/desktop_dist/ForensicEngine').toc)
+assert n == 0, f'{n} lib-dynload .so files bundled: use uv\'s standalone CPython (see mac/README.md)'
+" || exit 1
+
 echo "▸ [2/4] sidecar"
 mkdir -p "$TAURI/src-tauri/binaries"
 install -m 755 "$ROOT/desktop_dist/ForensicEngine" "$TAURI/src-tauri/binaries/engine-server-$TRIPLE"

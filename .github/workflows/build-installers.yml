@@ -24,17 +24,43 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
+        if: runner.os != 'macOS'
         with:
           python-version: "3.11"
 
       - name: Python deps
+        if: runner.os != 'macOS'
         run: |
           python -m pip install --upgrade pip
           pip install -r forensic_app/requirements-laptop.txt pyinstaller
 
+      # macOS uses uv's standalone CPython instead of setup-python. setup-python's macOS build ships
+      # the stdlib C extensions as ~55 separate lib-dynload/*.so files; the onefile engine unpacks
+      # and dlopen()s every one of them on EACH launch, and macOS security-checks each new file —
+      # measured 11-17 s to start vs ~2 s with the standalone build (extensions linked into libpython).
+      - uses: astral-sh/setup-uv@v6
+        if: runner.os == 'macOS'
+      - name: Python + deps (macOS, standalone CPython)
+        if: runner.os == 'macOS'
+        run: |
+          uv venv -p 3.11 --python-preference only-managed .venv
+          uv pip install -p .venv -r forensic_app/requirements-laptop.txt pyinstaller
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/python -c "import sys, sysconfig; print(sys.version, sysconfig.get_config_var('Py_ENABLE_SHARED'))"
+
       - name: Build PyInstaller binary (non-Windows)
         if: runner.os != 'Windows'
         run: bash forensic_app/desktop/build.sh
+
+      - name: Guard (macOS) — engine must not unpack stdlib .so files at launch
+        if: runner.os == 'macOS'
+        run: |
+          python - <<'EOF'
+          from PyInstaller.archive.readers import CArchiveReader
+          n = sum('lib-dynload/' in x for x in CArchiveReader('desktop_dist/ForensicEngine').toc)
+          print('lib-dynload entries:', n)
+          assert n == 0, 'setup-python-style CPython slipped in: macOS launch will be ~10 s slower'
+          EOF
 
       - name: Build PyInstaller binary (Windows)
         if: runner.os == 'Windows'
