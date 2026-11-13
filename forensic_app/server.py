@@ -246,11 +246,15 @@ def _is_self():
 RELEASES_URL = os.environ.get("RELEASES_URL",
                               "https://github.com/14H034160212/forensic-engine-desktop/releases")
 INSTALLERS = [   # (os key, label, file, note)
-    ("mac", "macOS (Apple Silicon)", "ForensicEngine-mac-arm64.dmg",
+    ("mac", "macOS — Apple Silicon (M1–M4)", "ForensicEngine-mac-arm64.dmg",
      "Open the .dmg and drag Forensic Engine into Applications. First launch: if macOS says it can't "
      "verify the developer, open System Settings → Privacy &amp; Security and click <b>Open Anyway</b> (once).<br>"
      "<span class=zh>打开 .dmg,把 Forensic Engine 拖进「应用程序」。首次打开若提示无法验证开发者:"
      "系统设置 → 隐私与安全性 → 点「仍要打开」(只需一次)。</span>"),
+    ("mac", "macOS — Intel", "ForensicEngine-mac-x64.dmg",
+     "For older Macs with an Intel processor ( → About This Mac shows \"Processor: Intel\"). "
+     "Install the same way as above.<br><span class=zh>适用于 Intel 处理器的旧款 Mac(「关于本机」里显示 Intel)。"
+     "安装方式同上。</span>"),
     ("win", "Windows 10/11 (64-bit)", "ForensicEngine-windows-x64-setup.exe",
      "Run the installer (no admin needed). If SmartScreen warns, click <b>More info → Run anyway</b>.<br>"
      "<span class=zh>运行安装程序(无需管理员)。若 SmartScreen 拦截:点「更多信息 → 仍要运行」。</span>"),
@@ -305,8 +309,9 @@ sets up the local AI runtime (Ollama) and downloads a model (~4.7 GB) automatica
 (function(){
   if (window.__TAURI__) document.body.classList.add("app");   // in-app: show copyable links, not buttons
   var ua = navigator.userAgent, os = /Mac/.test(ua) ? "mac" : /Win/.test(ua) ? "win" : /Linux/.test(ua) ? "linux" : "";
-  var box = document.getElementById("installers"), mine = os && box.querySelector("[data-os=" + os + "]");
-  if (mine) { mine.classList.add("mine"); box.insertBefore(mine, box.firstChild); }
+  var box = document.getElementById("installers");
+  var mine = os ? Array.prototype.slice.call(box.querySelectorAll("[data-os=" + os + "]")) : [];
+  mine.reverse().forEach(function (el) { el.classList.add("mine"); box.insertBefore(el, box.firstChild); });
 })();
 </script>
 """ + _dev_section()
@@ -770,41 +775,72 @@ def run_stream(payload: dict):
                 yield ev(e)
             E.reset_gen(); t0 = time.time()          # start machine-speed calibration clock
 
-            yield ev({"stage": "p1", "msg": "Pass 1 — reviewing the document..."})
-            p1 = _coerce(E.pass_one(deck).get("findings", []))
-            yield ev({"stage": "p1done", "msg": f"Pass 1 — {len(p1)} surface charges", "t": round(time.time()-t0)})
-
-            yield ev({"stage": "dec", "msg": "Excavating hidden assumptions..."})
-            claims = E.decompose(deck).get("claims", [])
-            yield ev({"stage": "decdone", "msg": f"Excavated {len(claims)} Level-2 assumptions", "t": round(time.time()-t0)})
-
-            yield ev({"stage": "p2", "msg": "Pass 2 — structural contradictions..."})
-            p2 = _coerce(E.pass_two(deck, p1, claims).get("findings", []))
-            npin = sum(1 for f in p2 if f.get("type") == "pincer")
-            yield ev({"stage": "p2done", "msg": f"Pass 2 — {len(p2)} new ({npin} pincers)", "t": round(time.time()-t0)})
-
-            packs, routed = [], []
-            if USE_PACKS:
-                yield ev({"stage": "rules", "msg": "Applying the routed domain rulebook..."})
+            # The four document-only stages are independent, so they run CONCURRENTLY (Ollama batches
+            # parallel requests: measured 1.33x on Apple Silicon with OLLAMA_NUM_PARALLEL=3, 1.14x even
+            # at 1). Pass 2 needs Pass 1 + the assumptions and starts as soon as both are in, while the
+            # rulebook / economics may still be running. Every stage still emits its own "...done".
+            import concurrent.futures as cf
+            commercial = profile not in T.NON_COMMERCIAL_PROFILES
+            def _rules():
                 try:
-                    packs, routed = T.run(deck, profile)
+                    pk, rt = T.run(deck, profile)
                 except Exception:
-                    packs, routed = [], []
-                packs = _coerce([f for f in packs if isinstance(f, dict)])
-                yield ev({"stage": "rulesdone",
-                          "msg": f"Rulebook — {len(packs)} domain charges "
-                                 f"({', '.join(routed) if routed else 'no pack matched — out of domain'})",
-                          "t": round(time.time()-t0)})
-
-            if profile in T.NON_COMMERCIAL_PROFILES:
+                    pk, rt = [], []
+                return _coerce([f for f in pk if isinstance(f, dict)]), rt
+            # FE_STAGE_WORKERS is set by the desktop launcher: >1 only when OUR Ollama batches parallel
+            # requests (see desktop/entry.py). 1 = submission order = the original sequential pipeline.
+            workers = max(1, int(os.environ.get("FE_STAGE_WORKERS", "1") or 1))
+            pool = cf.ThreadPoolExecutor(max_workers=workers)
+            fut = {pool.submit(lambda: _coerce(E.pass_one(deck).get("findings", []))): "p1",
+                   pool.submit(lambda: E.decompose(deck).get("claims", [])): "dec"}
+            yield ev({"stage": "p1", "msg": "Pass 1 — reviewing the document..."})
+            yield ev({"stage": "dec", "msg": "Excavating hidden assumptions..."})
+            if USE_PACKS:
+                fut[pool.submit(_rules)] = "rules"
+                yield ev({"stage": "rules", "msg": "Applying the routed domain rulebook..."})
+            if commercial:
+                fut[pool.submit(lambda: E.compute_economics(E.figures_for(deck)))] = "econ"   # LLM + deterministic overlay
+                yield ev({"stage": "econ", "msg": "Computing unit economics from the deck's own numbers..."})
+            else:
                 # unit economics (content spend, subscribers, CAC...) is meaningless for an essay /
                 # generic document and only produces noise; an empty result hides the section.
-                econ = {"figures": {}, "metrics": [], "danger_count": 0, "internal_only": True, "skipped": True}
-                yield ev({"stage": "econdone", "msg": f"Unit economics — skipped ({profile} document)", "t": round(time.time()-t0)})
-            else:
-                yield ev({"stage": "econ", "msg": "Computing unit economics from the deck's own numbers..."})
-                econ = E.compute_economics(E.figures_for(deck))   # LLM + deterministic regex overlay
-                yield ev({"stage": "econdone", "msg": f"{len(econ['metrics'])} metrics · {econ['danger_count']} red flags", "t": round(time.time()-t0)})
+                yield ev({"stage": "econdone", "msg": f"Unit economics — skipped ({profile} document)", "t": 0})
+            p1 = claims = p2 = None
+            packs, routed = [], []
+            econ = {"figures": {}, "metrics": [], "danger_count": 0, "internal_only": True, "skipped": True}
+            npin = 0
+            try:
+                pending = set(fut)
+                while pending:
+                    done, pending = cf.wait(pending, return_when=cf.FIRST_COMPLETED)
+                    for f in done:
+                        tag, val, t = fut[f], f.result(), round(time.time()-t0)
+                        if tag == "p1":
+                            p1 = val
+                            yield ev({"stage": "p1done", "msg": f"Pass 1 — {len(p1)} surface charges", "t": t})
+                        elif tag == "dec":
+                            claims = val
+                            yield ev({"stage": "decdone", "msg": f"Excavated {len(claims)} Level-2 assumptions", "t": t})
+                        elif tag == "rules":
+                            packs, routed = val
+                            yield ev({"stage": "rulesdone",
+                                      "msg": f"Rulebook — {len(packs)} domain charges "
+                                             f"({', '.join(routed) if routed else 'no pack matched — out of domain'})",
+                                      "t": t})
+                        elif tag == "econ":
+                            econ = val
+                            yield ev({"stage": "econdone", "msg": f"{len(econ['metrics'])} metrics · {econ['danger_count']} red flags", "t": t})
+                        elif tag == "p2":
+                            p2 = val
+                            npin = sum(1 for x in p2 if x.get("type") == "pincer")
+                            yield ev({"stage": "p2done", "msg": f"Pass 2 — {len(p2)} new ({npin} pincers)", "t": t})
+                        if tag in ("p1", "dec") and p1 is not None and claims is not None and p2 is None \
+                                and "p2" not in fut.values():
+                            f2 = pool.submit(lambda: _coerce(E.pass_two(deck, p1, claims).get("findings", [])))
+                            fut[f2] = "p2"; pending.add(f2)
+                            yield ev({"stage": "p2", "msg": "Pass 2 — structural contradictions..."})
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
 
             yield ev({"stage": "integ", "msg": "Integrating the case..."})
             integ = E.integrate(deck, p1, p2)
@@ -954,7 +990,47 @@ def _pdf_available():
 @app.get("/api/caps")
 def caps():
     """Optional features this install actually has, so the UI never shows a button that can't work."""
-    return {"pdf_export": _pdf_available()}
+    return {"pdf_export": _pdf_available(), "save_local": DESKTOP}
+
+# Set by the desktop launcher (desktop/entry.py). Only then may the server write into the user's
+# Downloads folder — never when this same code runs as the shared web demo.
+DESKTOP = os.environ.get("FE_DESKTOP", "").strip() in ("1", "true", "yes")
+
+def _reveal(path):
+    """Show the saved file in Finder / Explorer / the file manager (best effort)."""
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", path])
+        elif os.name == "nt":
+            subprocess.Popen(["explorer", "/select,", path])
+        else:
+            subprocess.Popen(["xdg-open", os.path.dirname(path)])
+    except Exception:
+        pass
+
+@app.post("/api/save/{rid}")
+def save_report(rid: str, request: Request):
+    """Desktop app: write the report as one self-contained HTML file into ~/Downloads and reveal it.
+    The webview can't download files or open new windows, so the old 'Export PDF' link did nothing
+    in the app. The HTML opens in any browser and prints to PDF there."""
+    if not DESKTOP or (request.client and request.client.host not in ("127.0.0.1", "::1", "localhost")):
+        return JSONResponse({"error": "saving is only available in the desktop app"}, status_code=403)
+    if not re.fullmatch(r"[\w.-]+", rid or ""):
+        return JSONResponse({"error": "bad id"}, status_code=400)
+    p = os.path.join(RUNS, rid + ".json")
+    if not os.path.exists(p):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    d = json.load(open(p, encoding="utf-8"))
+    html = _report_html(d)
+    out_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+    if not os.path.isdir(out_dir):
+        out_dir = os.path.expanduser("~")
+    label = re.sub(r"[^\w -]+", "", str(d.get("label") or "report")).strip()[:50] or "report"
+    out = os.path.join(out_dir, f"Forensic Engine - {label} - {rid}.html")
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(html)
+    _reveal(out)
+    return {"path": out, "name": os.path.basename(out)}
 
 @app.get("/api/export/{rid}")
 def export_pdf(rid: str):

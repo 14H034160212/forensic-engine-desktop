@@ -3,6 +3,7 @@
 | Platform | File |
 |---|---|
 | **macOS** (Apple Silicon M1–M4) | `ForensicEngine-mac-arm64.dmg` |
+| **macOS** (Intel) | `ForensicEngine-mac-x64.dmg` |
 | **Windows** 10/11 (64-bit) | `ForensicEngine-windows-x64-setup.exe` (or `.msi`) |
 | **Linux** (x64) | `ForensicEngine-linux-x64.AppImage` |
 

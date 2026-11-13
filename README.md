@@ -8,7 +8,8 @@ reasoning-excavation + deterministic unit-economics engine runs entirely on loca
 
 | Platform | Installer (always the latest version) |
 |---|---|
-| **macOS** (Apple Silicon) | [ForensicEngine-mac-arm64.dmg](https://github.com/14H034160212/forensic-engine-desktop/releases/latest/download/ForensicEngine-mac-arm64.dmg) |
+| **macOS** (Apple Silicon M1–M4) | [ForensicEngine-mac-arm64.dmg](https://github.com/14H034160212/forensic-engine-desktop/releases/latest/download/ForensicEngine-mac-arm64.dmg) |
+| **macOS** (Intel) | [ForensicEngine-mac-x64.dmg](https://github.com/14H034160212/forensic-engine-desktop/releases/latest/download/ForensicEngine-mac-x64.dmg) |
 | **Windows** 10/11 | [ForensicEngine-windows-x64-setup.exe](https://github.com/14H034160212/forensic-engine-desktop/releases/latest/download/ForensicEngine-windows-x64-setup.exe) |
 | **Linux** | [ForensicEngine-linux-x64.AppImage](https://github.com/14H034160212/forensic-engine-desktop/releases/latest/download/ForensicEngine-linux-x64.AppImage) |
 

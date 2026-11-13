@@ -200,28 +200,40 @@ def run_pack(deck, pack):
     """Union of a holistic pass (connects distributed evidence) and per-rule checks (forces full
     rule coverage). More correct findings only helps recall; the router already gates domain
     relevance, and a precision/dedup layer (NLI verifier) can prune later."""
-    out = _holistic(deck, pack)
+    import concurrent.futures as cf
+    # The holistic pass and the per-rule checks are independent LLM calls → run them concurrently
+    # (Ollama batches them). Results are merged in the SAME order as before (holistic first, then
+    # rules in pack order), so output is unchanged — only faster.
+    import os
+    workers = 3 if int(os.environ.get("FE_STAGE_WORKERS", "1") or 1) > 1 else 1   # see desktop/entry.py
+    with cf.ThreadPoolExecutor(max_workers=workers) as ex:
+        hol = ex.submit(_holistic, deck, pack)
+        verdicts = list(ex.map(lambda r: (r, _check_rule(deck, r)), pack["rules"]))
+        out = hol.result()
     seen = {f.get("id") for f in out}
-    for r in pack["rules"]:
-        sysp = ("You are a careful forensic analyst applying ONE expert rule to a document. Your "
-                "priority is to AVOID false alarms: many documents ADEQUATELY satisfy a rule, and "
-                "flagging those is a serious error. Only report a violation that is concrete, specific, "
-                "and grounded in the document's own text.\n\n" + _PRECISION)
-        usr = (f"DOCUMENT:\n<document>\n{deck}\n</document>\n\n"
-               f"RULE [{r['id']}]: {r['rule']}\n\n"
-               "Step 1: state briefly whether the document ADEQUATELY addresses this rule — e.g. does "
-               "it already provide the evidence/data/mechanism the rule asks about? "
-               "Step 2: mark violated=true ONLY if there is a concrete, specific gap the document does "
-               "NOT address. If the document reasonably satisfies the rule, mark violated=false.\n"
-               'Return JSON: {"addressed": "what the doc says about this", "violated": true/false, '
-               '"name": "short title", "charge": "the specific claim + exactly how it violates the rule", '
-               '"severity": "Fatal|Severe|Material|Minor"}.')
-        d = E.chat_json(sysp, usr)
+    for r, d in verdicts:
         if isinstance(d, dict) and d.get("violated") and r["id"] not in seen:
             out.append({"id": r["id"], "name": d.get("name", r["id"]), "charge": d.get("charge", ""),
                         "type": "pincer", "load_bearing": True,
                         "severity": d.get("severity", "Material"), "trigger_pack": pack["id"]})
     return out
+
+def _check_rule(deck, r):
+    """One expert rule vs the document → the model's JSON verdict (or None)."""
+    sysp = ("You are a careful forensic analyst applying ONE expert rule to a document. Your "
+            "priority is to AVOID false alarms: many documents ADEQUATELY satisfy a rule, and "
+            "flagging those is a serious error. Only report a violation that is concrete, specific, "
+            "and grounded in the document's own text.\n\n" + _PRECISION)
+    usr = (f"DOCUMENT:\n<document>\n{deck}\n</document>\n\n"
+           f"RULE [{r['id']}]: {r['rule']}\n\n"
+           "Step 1: state briefly whether the document ADEQUATELY addresses this rule — e.g. does "
+           "it already provide the evidence/data/mechanism the rule asks about? "
+           "Step 2: mark violated=true ONLY if there is a concrete, specific gap the document does "
+           "NOT address. If the document reasonably satisfies the rule, mark violated=false.\n"
+           'Return JSON: {"addressed": "what the doc says about this", "violated": true/false, '
+           '"name": "short title", "charge": "the specific claim + exactly how it violates the rule", '
+           '"severity": "Fatal|Severe|Material|Minor"}.')
+    return E.chat_json(sysp, usr)
 
 # Packs that only make sense for a commercial document (fundraising / business plan). For an essay or
 # a generic document the router can still match them on business-sounding prose, and they then charge

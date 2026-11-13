@@ -1,7 +1,8 @@
 # macOS build
 
 ## For users
-Download `ForensicEngine-mac-arm64.dmg` from the
+Download `ForensicEngine-mac-arm64.dmg` (Apple Silicon M1–M4) or `ForensicEngine-mac-x64.dmg` (Intel; check
+ → About This Mac) from the
 [latest release](https://github.com/14H034160212/forensic-engine-desktop/releases/latest), open it, and drag
 **Forensic Engine** into **Applications**.
 

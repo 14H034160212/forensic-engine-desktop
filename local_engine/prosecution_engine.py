@@ -78,14 +78,18 @@ def chat(system, user, temperature=0.2):
 # static number can't span an M-series Mac, a Ryzen iGPU box, and an old dual-core i5. Reset at the
 # start of a run; snapshot at the end to write the calibration the /api/estimate endpoint reads.
 _GEN = {"tokens": 0, "ns": 0, "prompt_tokens": 0, "load_ns": 0}
+import threading as _threading
+_GEN_LOCK = _threading.Lock()      # stages run concurrently (server.run_stream), so updates must not race
 def reset_gen():
-    _GEN.update({"tokens": 0, "ns": 0, "prompt_tokens": 0, "load_ns": 0})
+    with _GEN_LOCK:
+        _GEN.update({"tokens": 0, "ns": 0, "prompt_tokens": 0, "load_ns": 0})
 def _record_gen(r):
     try:
-        _GEN["tokens"]        += int(r.get("eval_count") or 0)
-        _GEN["ns"]            += int(r.get("eval_duration") or 0)
-        _GEN["prompt_tokens"] += int(r.get("prompt_eval_count") or 0)
-        _GEN["load_ns"]        = max(_GEN["load_ns"], int(r.get("load_duration") or 0))
+        with _GEN_LOCK:
+            _GEN["tokens"]        += int(r.get("eval_count") or 0)
+            _GEN["ns"]            += int(r.get("eval_duration") or 0)
+            _GEN["prompt_tokens"] += int(r.get("prompt_eval_count") or 0)
+            _GEN["load_ns"]        = max(_GEN["load_ns"], int(r.get("load_duration") or 0))
     except Exception:
         pass
 def gen_stats():
@@ -529,8 +533,12 @@ def integrate(deck, p1, p2):
     p = _prof()
     sys_p = _system() + "\n\nYou are writing the integrated closing assessment."
     def brief(fs):
+        # Include WHAT each finding says, not just its title: given only "Team Credentials", a 7B model
+        # wrote "the team lacks the necessary experience" although the finding (and the deck) said only
+        # that track-record detail was missing.
         return "\n".join(f"- [{f.get('id')}] {f.get('name')} "
-                         f"(LB={f.get('load_bearing')}, {f.get('severity')})" for f in fs)
+                         f"(LB={f.get('load_bearing')}, {f.get('severity')}): {str(f.get('charge') or '')[:220]}"
+                         for f in fs)
     verdict_ask = ("rate the venture's risk and name the credible collapse paths"
                    if PROFILE == "pitch" else
                    f"assess how robustly {p['case']} holds up and where it is most likely to fail")
@@ -540,12 +548,21 @@ def integrate(deck, p1, p2):
         f"SUMMARY: <3-5 sentences on how well {p['case']} holds up and where it is weakest>\n"
         "VERDICT: <2-4 sentence blind, document-only overall assessment — " + verdict_ask +
         ", WITHOUT invoking any real-world identity or outcome>\n"
+        "Base every sentence ONLY on the findings above, and do not make them stronger than they are: "
+        "if a finding says detail is MISSING, say it is missing or unsupported — never claim the "
+        "opposite is true (e.g. 'no track record given' is NOT 'the team is inexperienced').\n"
         "No other text, no JSON.")
     summary, verdict = "", ""
     for line in txt.splitlines():
-        s = line.strip()
-        if s.upper().startswith("SUMMARY:"): summary = s[8:].strip()
-        elif s.upper().startswith("VERDICT:"): verdict = s[8:].strip()
+        # models often decorate the prefixes ("**SUMMARY:**", "## VERDICT:"): strip markdown first,
+        # otherwise the whole raw reply (both blocks + asterisks) ends up as the summary
+        s = re.sub(r"^[\s*#>_\-]+", "", line.strip())
+        m = re.match(r"(SUMMARY|VERDICT)\s*\**\s*:\s*\**\s*(.*)$", s, re.I)
+        if not m:
+            continue
+        body = m.group(2).strip().strip("*").strip()
+        if m.group(1).upper() == "SUMMARY": summary = body
+        else: verdict = body
     if not summary:
         summary = txt.strip()[:700]
 

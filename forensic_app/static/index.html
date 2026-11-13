@@ -108,8 +108,6 @@
   .conf .top{font-weight:600;font-size:15px} .conf .d{font-size:13.5px;margin-top:6px} .conf .d b{color:var(--accent)} .conf .why{font-style:italic;color:var(--muted);font-size:13px;margin-top:6px}
   .empty{color:var(--muted);font-size:14px;padding:24px;text-align:center}
   .gpu-line{display:inline-block;font-family:var(--mono);font-size:11px;border:1px solid var(--rule);border-radius:20px;padding:3px 11px;color:var(--muted);margin:0 0 14px}
-  /* No PDF engine in this install (desktop app) → hide every Export PDF link (see /api/caps) */
-  body.nopdf a[href^="/api/export/"], body.nopdf #exportlink, body.nopdf #exportlinkx{display:none}
 </style>
 <div class="topbar">
   <span class="brand">Forensic Engine</span>
@@ -1109,9 +1107,35 @@ function renderFixList(R){
 (function(){ var _f=window.fetch; window.fetch=function(u,o){ o=o||{}; o.headers=Object.assign({"ngrok-skip-browser-warning":"true"}, o.headers||{}); return _f.call(window,u,o); }; })();
 function api(p,opt){ return fetch(p,opt).then(function(r){return r.json();}); }
 
-// ---------- optional features ----------
-api("/api/caps").then(function(c){ if(!c || !c.pdf_export) document.body.classList.add("nopdf"); })
-  .catch(function(){ document.body.classList.add("nopdf"); });
+// ---------- report export ----------
+// pdf  : server can render PDF (weasyprint)  → "Export PDF" link (unchanged)
+// save : desktop app, no PDF engine          → "Save report": POST /api/save writes an HTML file to
+//        ~/Downloads and reveals it (the webview can't download files or open new windows)
+// html : plain browser, no PDF engine        → "Export report (HTML)": opens a printable page
+var EXPORT_MODE="pdf", EXPORT_LABEL="⬇ Export PDF";
+function applyExportLabels(){
+  Array.prototype.forEach.call(document.querySelectorAll('a[href^="/api/export/"], #exportlink, #exportlinkx'),
+    function(a){ if(!a.dataset.saving) a.textContent=EXPORT_LABEL; });
+}
+api("/api/caps").then(function(c){
+  c=c||{};
+  if(c.pdf_export){ EXPORT_MODE="pdf"; EXPORT_LABEL="⬇ Export PDF"; }
+  else if(c.save_local){ EXPORT_MODE="save"; EXPORT_LABEL="💾 Save report"; }
+  else { EXPORT_MODE="html"; EXPORT_LABEL="⬇ Export report (HTML)"; }
+  applyExportLabels();
+}).catch(function(){});
+document.addEventListener("click",function(e){
+  var a=e.target.closest && e.target.closest('a[href^="/api/export/"]');
+  if(!a || EXPORT_MODE!=="save") return;
+  e.preventDefault();
+  var rid=a.getAttribute("href").split("/").pop();
+  a.dataset.saving="1"; a.textContent="Saving…";
+  api("/api/save/"+encodeURIComponent(rid),{method:"POST"}).then(function(r){
+    a.textContent = r && r.name ? "✓ Saved to Downloads" : "⚠ "+((r&&r.error)||"Could not save");
+    a.title = (r && r.path) || "";
+  }).catch(function(){ a.textContent="⚠ Could not save"; })
+    .then(function(){ setTimeout(function(){ delete a.dataset.saving; a.textContent=EXPORT_LABEL; }, 4000); });
+});
 
 // ---------- models ----------
 var MODEL_LABELS={
@@ -1351,7 +1375,9 @@ function logFail(msg){
 function logStage(key,msg,done,t){
   var id="ln-"+key, e=document.getElementById(id);
   if(!e){ e=document.createElement("div"); e.id=id; e.className="ln cur"; logEl.appendChild(e); }
-  Array.prototype.forEach.call(logEl.querySelectorAll(".ln.cur"),function(x){ if(x!==e){x.classList.remove("cur");x.classList.add("done");} });
+  // Stages now run CONCURRENTLY (each sends its own "...done"), so a new line must not mark the
+  // others finished — only an error or the final result settles every still-spinning line.
+  if(key==="err"||key==="result") Array.prototype.forEach.call(logEl.querySelectorAll(".ln.cur"),function(x){ if(x!==e){x.classList.remove("cur");x.classList.add("done");} });
   e.className="ln "+(done?"done":"cur");
   e.innerHTML=esc(msg)+(done&&t!=null?"<span class='t'>"+t+"s</span>":(done?"":"<span class='spin'></span><span class='live' style='float:right;opacity:.6;font-family:var(--mono)'></span>"));
 }
@@ -1377,7 +1403,8 @@ function runSingle(){
    }).catch(function(e){ logStage("err","Error: "+e.message,true); finish(); });
   function handle(o){
     if(o.error){ logFail(o.error); return; }
-    if(o.stage==="result"){ render(o.result); showExport(o.result); refreshEst("model","deck",null); refreshGpu(); return; }
+    if(o.stage==="result"){ Array.prototype.forEach.call(logEl.querySelectorAll(".ln.cur"),function(x){x.classList.remove("cur");x.classList.add("done");});
+      render(o.result); showExport(o.result); refreshEst("model","deck",null); refreshGpu(); return; }
     if(o.stage){ var done=/done$/.test(o.stage)||o.stage==="start"; logStage(o.stage.replace(/done$/,""),o.msg,done,o.t); }
   }
   function finish(){ finalizeLog(logEl); btn.disabled=false; btn.textContent="Run analysis ▸"; }
@@ -1514,7 +1541,7 @@ function renderConflicts(d){
       "<div class='why'>"+esc(c.why)+"</div>";
     out.appendChild(box);
   });
-  if(d.id){ var bar=el("div","exportbar"); bar.style.display="flex"; bar.innerHTML="<a class='btn ghost' target='_blank' href='/api/export/"+d.id+"'>⬇ Export PDF</a>"; out.appendChild(bar); }
+  if(d.id){ var bar=el("div","exportbar"); bar.style.display="flex"; bar.innerHTML="<a class='btn ghost' target='_blank' href='/api/export/"+d.id+"'>"+EXPORT_LABEL+"</a>"; out.appendChild(bar); }
 }
 
 // ---------- history ----------

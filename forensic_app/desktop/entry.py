@@ -47,6 +47,8 @@ os.environ.setdefault("MODELS", "qwen2.5-coder:7b,gemma4:26b,gpt-oss:20b,llama3.
 # Turn the routed domain rulebook ON by default — it is what delivers the recall (blind engine alone
 # is ~15%). Router-gated + precision-guarded.
 os.environ.setdefault("USE_PACKS", "1")
+# Desktop mode: lets the server save reports into ~/Downloads ("Save report"); off for the web demo.
+os.environ["FE_DESKTOP"] = "1"
 
 SETUP_FILE = os.path.join(DATA_DIR, "setup.json")   # first-run auto-setup progress (frontend polls it)
 
@@ -124,23 +126,73 @@ def _install_ollama():
         log("  ! auto-install Ollama failed:\n" + traceback.format_exc())
     return False
 
+# Concurrency of the analysis stages (read by server.py per run as FE_STAGE_WORKERS). Running stages
+# concurrently is only a win when Ollama batches parallel requests: measured on the same deck,
+# 306 s sequential → 226 s concurrent at OLLAMA_NUM_PARALLEL=3, but 327 s (slower) at 1. So we go
+# concurrent only for an Ollama WE started with NUM_PARALLEL>=2 (tracked across app restarts by PID);
+# a user's own Ollama with unknown settings keeps the original sequential behaviour.
+OLLAMA_STATE = os.path.join(DATA_DIR, "ollama_started.json")
+
+def _pid_alive(pid):
+    try:
+        return bool(pid) and platforms.parent_alive(int(pid))
+    except Exception:
+        return False
+
+def _set_stage_workers(num_parallel):
+    n = 4 if num_parallel >= 2 else 1
+    os.environ["FE_STAGE_WORKERS"] = str(n)
+    log(f"  analysis stages: {'concurrent' if n > 1 else 'sequential'} (Ollama parallel={num_parallel})")
+
+def _known_parallel_of_running_ollama():
+    """NUM_PARALLEL of an Ollama we started earlier and is still running, else 1 (unknown)."""
+    try:
+        st = _json.load(open(OLLAMA_STATE, encoding="utf-8"))
+        if _pid_alive(st.get("pid")):
+            return int(st.get("num_parallel") or 1)
+    except Exception:
+        pass
+    return 1
+
 def _ensure_ollama():
     """Ensure Ollama is RUNNING — start it if installed, auto-install it if not, all with no manual step."""
     if _ollama_up():
+        _set_stage_workers(_known_parallel_of_running_ollama())
         return True
     exe = _ollama_binary()
     if not exe:
         if not _install_ollama():
             return False
         exe = _ollama_binary()
+    proc = None
     try:
         if exe:
-            subprocess.Popen([exe, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # The engine fires its independent stages concurrently; let Ollama batch up to 3 requests
+            # (measured 1.33x vs 1.14x at the default of 1 on a 16 GB Apple-Silicon Mac; KV cache for
+            # 3 x 8k context adds ~1.4 GB for a 7B model). Respect a user-set value.
+            env = dict(os.environ)
+            env.setdefault("OLLAMA_NUM_PARALLEL", "3")
+            proc = subprocess.Popen([exe, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+            try:
+                npar = int(env["OLLAMA_NUM_PARALLEL"])
+            except ValueError:
+                npar = 1
+            try:
+                os.makedirs(DATA_DIR, exist_ok=True)
+                with open(OLLAMA_STATE, "w", encoding="utf-8") as f:
+                    _json.dump({"pid": proc.pid, "num_parallel": npar}, f)
+            except Exception:
+                pass
+            _set_stage_workers(npar)
     except Exception:
         pass
     for _ in range(30):
         time.sleep(1)
         if _ollama_up():
+            if proc is not None and proc.poll() is not None:
+                # ours exited (port already taken, e.g. Ollama's own tray app started by its installer)
+                # → the serving Ollama has unknown settings: stay sequential
+                _set_stage_workers(1)
             log("  ✓ Ollama running"); return True
     return False
 

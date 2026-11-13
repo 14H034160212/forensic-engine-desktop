@@ -15,7 +15,8 @@ jobs:
         include:
           - os: ubuntu-22.04
           - os: windows-latest
-          - os: macos-latest
+          - os: macos-latest        # Apple Silicon → ForensicEngine-mac-arm64.dmg
+          - os: macos-15-intel      # Intel Macs    → ForensicEngine-mac-x64.dmg (GitHub's last Intel image)
     runs-on: ${{ matrix.os }}
     defaults:
       run:
