@@ -204,6 +204,17 @@ def run(tax, ep, obs, outdir, progress=None):
         in_play_n = sum(1 for c in res.get('constructs',[]) if c.get('coverage') in ('COV.RELEVANT_FOUND','COV.RELEVANT_INSUFFICIENT'))
         print(f"  {did} {dom['name'][:34]:34} — in play: {in_play_n}/{len(res.get('constructs',[]))}", flush=True)
         _p("domain", di + 1, ndoms, f"{did} in play {in_play_n}/{len(res.get('constructs',[]))}")
+        # Checkpoint: persist completed-domain results after every domain, before the final writing stage,
+        # so a late error never loses the reasoning already done. Atomic (tmp + replace); never fatal.
+        try:
+            _ckpt = {"stage": "coverage_walk", "domains_done": list(domain_results.keys()),
+                     "taxonomy": {"version": tax["version"], "sha256": tax["sha256"]},
+                     "coverage_walk": domain_results, "constructs_in_play": findings_in_play}
+            _tmp = os.path.join(outdir, "checkpoint.json.tmp")
+            json.dump(_ckpt, open(_tmp, "w", encoding="utf-8"), indent=2)
+            os.replace(_tmp, os.path.join(outdir, "checkpoint.json"))
+        except Exception:
+            pass
     # Pass 6-7: significance synthesis + teacher report + student report
     _p("synthesise", ndoms, ndoms, "Writing the teacher report")
     report = synthesise(tax, ep, findings_in_play, brief)
