@@ -217,9 +217,9 @@ def run(tax, ep, obs, outdir, progress=None):
                 "constructs_in_play": findings_in_play,
                 "evidence_manifest": evidence_manifest,
                 "integrity": ep.get("integrity", {})}
-    json.dump(internal, open(os.path.join(outdir, "internal_consideration.json"), "w"), indent=2)
-    json.dump(report, open(os.path.join(outdir, "report.json"), "w"), indent=2)
-    json.dump(student, open(os.path.join(outdir, "student.json"), "w"), indent=2)
+    json.dump(internal, open(os.path.join(outdir, "internal_consideration.json"), "w", encoding="utf-8"), indent=2)
+    json.dump(report, open(os.path.join(outdir, "report.json"), "w", encoding="utf-8"), indent=2)
+    json.dump(student, open(os.path.join(outdir, "student.json"), "w", encoding="utf-8"), indent=2)
     _write_report_md(tax, ep, obs, findings_in_play, report, os.path.join(outdir, "teacher_report.md"))
     _write_student_md(tax, ep, student, os.path.join(outdir, "student_report.md"))
     # coverage summary for quick audit
@@ -227,7 +227,7 @@ def run(tax, ep, obs, outdir, progress=None):
     for d in domain_results.values():
         for c in d.get("constructs", []): cov[c.get("coverage")] += 1
     internal["coverage_summary"] = dict(cov)
-    json.dump(internal, open(os.path.join(outdir, "internal_consideration.json"), "w"), indent=2)
+    json.dump(internal, open(os.path.join(outdir, "internal_consideration.json"), "w", encoding="utf-8"), indent=2)
     _p("done", ndoms, ndoms, "Reports ready")
     return internal, report
 
@@ -253,7 +253,7 @@ def _write_report_md(tax, ep, obs, in_play, report, path):
              f"domains considered; {len(in_play)} in play. Full reasoning and evidence preserved in "
              f"`internal_consideration.json` (drill-down + audit). Reason broadly · Report selectively · "
              f"Preserve everything underneath._")
-    open(path, "w").write("\n".join(L))
+    open(path, "w", encoding="utf-8").write("\n".join(L))
 
 def _write_student_md(tax, ep, student, path):
     L = [f"# Your learning session — a quick reflection",
@@ -267,7 +267,7 @@ def _write_student_md(tax, ep, student, path):
         L.append(f"\n**One thing to try next:** {student['one_next_step']}")
     L.append("\n---\n_This reflection is based only on what the session recorded, and some of the AI's "
              "replies weren't fully captured — so treat it as a helpful mirror, not a final verdict._")
-    open(path, "w").write("\n".join(L))
+    open(path, "w", encoding="utf-8").write("\n".join(L))
 
 if __name__ == "__main__":
     import dre_core
@@ -280,6 +280,6 @@ if __name__ == "__main__":
     internal, report = run(tax, ep, obs, os.path.join(os.path.dirname(__file__), "out"))
     print(f"\nDONE in {int(time.time()-t0)}s → out/teacher_report.md + out/internal_consideration.json")
     print("\n===== TEACHER REPORT =====")
-    print(open(os.path.join(os.path.dirname(__file__), "out", "teacher_report.md")).read())
+    print(open(os.path.join(os.path.dirname(__file__), "out", "teacher_report.md"), encoding="utf-8").read())
     print("\n===== STUDENT REPORT =====")
-    print(open(os.path.join(os.path.dirname(__file__), "out", "student_report.md")).read())
+    print(open(os.path.join(os.path.dirname(__file__), "out", "student_report.md"), encoding="utf-8").read())

@@ -668,6 +668,6 @@ if __name__ == "__main__":
     result = run(deck_path, label)
     os.makedirs("prosecution_out", exist_ok=True)
     fn = f"prosecution_out/{label}_prosecution.json"
-    json.dump(result, open(fn, "w"), indent=2, ensure_ascii=False)
+    json.dump(result, open(fn, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     print("\nSaved:", fn)
     print(json.dumps(result["stats"], indent=2))

@@ -165,5 +165,5 @@ if __name__ == "__main__":
     batch = int(os.environ.get("EXCAV_BATCH", "1"))
     res = excavate(text, label, batch=batch, on_stage=lambda s, m: print("  " + m, flush=True))
     os.makedirs("prosecution_out", exist_ok=True)
-    json.dump(res, open(f"prosecution_out/{label}_excavation.json", "w"), indent=2, ensure_ascii=False)
+    json.dump(res, open(f"prosecution_out/{label}_excavation.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     print("\nSTATS:", json.dumps(res["stats"], indent=2))
