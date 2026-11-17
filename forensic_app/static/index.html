@@ -322,6 +322,7 @@
 
       <div class="picker" style="margin:0 0 10px;flex-wrap:wrap">
         <label>Model</label><select id="modeldre" style="min-width:180px"></select>
+        <label style="margin-left:8px;font-size:13px">Hosted GPU</label><input id="drehost" type="text" placeholder="optional — http://your-gpu:11434" title="Leave blank to run on this machine's local Ollama (fully local, nothing leaves the building). Or point at a hosted GPU you control — e.g. a rented box reached over an SSH tunnel — to use a bigger model; data still goes only to a machine you own, not to a model vendor." style="width:230px;font-family:var(--mono);font-size:12px;padding:4px 6px;border:1px solid #ccc;border-radius:6px">
         <button class="tab" onclick="runDre()" id="drebuild" style="border-color:var(--accent);background:var(--accent);color:#fff">Run reasoning ▸</button>
         <label style="margin-left:8px;font-family:var(--sans);font-size:13px;color:var(--fg);cursor:pointer"><input type="checkbox" id="dresample" checked> Use the bundled sample episode</label>
         <label title="Constrained typed decoding: forces a valid decision for every construct and runs several times faster than free-form reasoning — fully local, no cloud." style="margin-left:8px;font-family:var(--sans);font-size:13px;color:var(--fg);cursor:pointer"><input type="checkbox" id="dretyped"> Fast typed decisions (local “System One”)</label>
@@ -692,6 +693,15 @@ function loadDreView(){
     }
     DRE_READY=true;
   }).catch(function(){ document.getElementById("drestate").textContent="Could not reach the Learning DRE module."; });
+  var dh=document.getElementById("drehost");
+  if(dh && !dh._wired){ dh._wired=true; dh.addEventListener("change", function(){
+    var h=dh.value.trim();
+    api("/api/dre/models"+(h?("?host="+encodeURIComponent(h)):"")).then(function(d){
+      if(!sel) return; sel.innerHTML="";
+      if(!(d.models&&d.models.length)){ var o=document.createElement("option"); o.value=""; o.textContent=h?"(no model reachable on that host)":"(no local model)"; sel.appendChild(o); }
+      else { d.models.forEach(function(m){ var o=document.createElement("option"); o.value=m; o.textContent=modelLabel(m)+(m===d.recommended?"  ★":""); sel.appendChild(o); }); if(d.recommended) sel.value=d.recommended; }
+    }).catch(function(){ document.getElementById("drestate").textContent="Could not reach that hosted GPU URL."; });
+  }); }
 }
 function runDre(){
   var btn=document.getElementById("drebuild"), sel=document.getElementById("modeldre");
@@ -700,6 +710,7 @@ function runDre(){
   fd.append("model", sel?sel.value:"");
   fd.append("use_sample", useSample?"1":"0");
   fd.append("decision_backend", document.getElementById("dretyped").checked?"local_typed":"local");
+  var dhost=(document.getElementById("drehost")||{}).value; if(dhost&&dhost.trim()) fd.append("ollama_host", dhost.trim());
   if(!useSample){
     var f=document.getElementById("drefile").files[0];
     if(!f){ document.getElementById("drestate").textContent="Choose an Episode file, or tick “Use the bundled sample episode”."; return; }

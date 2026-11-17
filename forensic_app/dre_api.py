@@ -45,10 +45,11 @@ def register_dre(app, HERE, DATA):
     def _ollama_host():
         return os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 
-    def _installed_models():
+    def _installed_models(host=None):
         import urllib.request
+        base = (host or _ollama_host()).rstrip("/")
         try:
-            with urllib.request.urlopen(_ollama_host() + "/api/tags", timeout=4) as r:
+            with urllib.request.urlopen(base + "/api/tags", timeout=4) as r:
                 return [m.get("name", "") for m in json.load(r).get("models", [])]
         except Exception:
             return []
@@ -59,8 +60,8 @@ def register_dre(app, HERE, DATA):
                  "qwen2.5-coder:32b", "qwen2.5-coder:7b", "llama3.2:3b"]
 
     @app.get("/api/dre/models")
-    def dre_models():
-        have = _installed_models()
+    def dre_models(host: str = ""):
+        have = _installed_models(host.strip() or None)
         pref = [m for m in PREFERRED if m in have]
         rest = [m for m in have if m not in pref]
         ordered = pref + rest
@@ -79,19 +80,22 @@ def register_dre(app, HERE, DATA):
         return {k: j[k] for k in ("id", "state", "progress", "model", "error",
                                   "started_at", "finished_at", "episode_name") if k in j}
 
-    def _run_job(job_id, episode_path, taxonomy_path, model, outdir, decision_backend="local"):
+    def _run_job(job_id, episode_path, taxonomy_path, model, outdir, decision_backend="local", ollama_host=None):
         import dre_core, dre_reason
         j = _JOBS[job_id]
         with _RUN_LOCK:
             try:
                 j["state"] = "running"
-                # point the reasoning layer at the app's local Ollama + the chosen model
-                dre_reason.OLLAMA = _ollama_host()
+                # point the reasoning layer at the chosen Ollama host (local by default, or a hosted GPU the
+                # user controls — e.g. a rented box reached over an SSH tunnel; data still goes only to a
+                # machine the user owns, not to a model vendor) + the chosen model
+                host = (ollama_host or _ollama_host()).rstrip("/")
+                dre_reason.OLLAMA = host
                 dre_reason.MODEL = model
                 os.environ["DRE_MODEL"] = model
                 # coverage decision backend for THIS run (runs are serialised by _RUN_LOCK, so setting
                 # the process env here is safe): 'local' free-form, or 'local_typed' constrained decoding.
-                os.environ["OLLAMA_HOST"] = _ollama_host()
+                os.environ["OLLAMA_HOST"] = host
                 os.environ["DRE_DECISION_BACKEND"] = decision_backend
                 j["progress"] = {"stage": "loading", "done": 0, "total": 1, "pct": 2,
                                  "note": "Loading taxonomy + telemetry evidence"}
@@ -162,8 +166,14 @@ def register_dre(app, HERE, DATA):
         decision_backend = (form.get("decision_backend") or "local").strip().lower()
         if decision_backend not in ("local", "local_typed", "jev"):
             decision_backend = "local"
+        # Optional hosted-GPU endpoint (local Ollama by default). http(s) only; data stays on a host the
+        # user controls (e.g. a rented box over an SSH tunnel), not sent to a model vendor.
+        ollama_host = (form.get("ollama_host") or "").strip().rstrip("/")
+        if ollama_host and not ollama_host.startswith(("http://", "https://")):
+            return JSONResponse({"error": "ollama_host must be an http(s) URL, e.g. http://127.0.0.1:11434"},
+                                status_code=400)
 
-        have = _installed_models()
+        have = _installed_models(ollama_host or None)
         if not model:
             model = next((m for m in PREFERRED if m in have), (have[0] if have else ""))
         if not have:
@@ -193,18 +203,31 @@ def register_dre(app, HERE, DATA):
                 fname = (getattr(ep_file, "filename", "") or "").lower()
                 data = await ep_file.read()
                 if fname.endswith(".zip"):
-                    # A Recorder Episode exported as a zip — unpack and point at the Episode folder.
+                    # A Recorder Episode exported as a zip — unpack.
                     import zipfile, io
                     exdir = os.path.join(outdir, "episode_extracted")
                     os.makedirs(exdir, exist_ok=True)
                     with zipfile.ZipFile(io.BytesIO(data)) as z:
                         z.extractall(exdir)
-                    # locate the folder that actually contains the provenance log / manifest
-                    episode_path = exdir
-                    for root, _dirs, files in os.walk(exdir):
-                        if any(f.endswith(".jsonl") for f in files) or any("manifest" in f.lower() and f.endswith(".json") for f in files):
-                            episode_path = root
-                            break
+                    # P0-B: make scope explicit. Enumerate episode logs and refuse a multi-episode / ambiguous
+                    # archive rather than silently assessing only the first one.
+                    jsonls = [os.path.relpath(os.path.join(r, f), exdir)
+                              for r, _d, fs in os.walk(exdir) for f in fs if f.lower().endswith(".jsonl")]
+                    if len(jsonls) > 1:
+                        shown = ", ".join(sorted(jsonls)[:6]) + (" …" if len(jsonls) > 6 else "")
+                        return JSONResponse({"error":
+                            "MULTI_EPISODE_ARCHIVE: this ZIP contains %d episode logs (%s). To avoid silently "
+                            "assessing only one, submit a single episode at a time, or one combined native-TT "
+                            "file. The report scope must match what you intend to assess." % (len(jsonls), shown)},
+                            status_code=400)
+                    if jsonls:
+                        episode_path = os.path.join(exdir, jsonls[0])
+                    else:
+                        episode_path = exdir
+                        for root, _dirs, files in os.walk(exdir):
+                            if any("manifest" in f.lower() and f.endswith(".json") for f in files):
+                                episode_path = root
+                                break
                 else:
                     with open(episode_path, "wb") as f:
                         f.write(data)
@@ -224,7 +247,8 @@ def register_dre(app, HERE, DATA):
         with _JOBS_LOCK:
             _JOBS[job_id] = job
         threading.Thread(target=_run_job,
-                         args=(job_id, episode_path, taxonomy_path, model, outdir, decision_backend),
+                         args=(job_id, episode_path, taxonomy_path, model, outdir, decision_backend,
+                               ollama_host or None),
                          daemon=True).start()
         return {"job": job_id, "model": model, "decision_backend": decision_backend}
 
