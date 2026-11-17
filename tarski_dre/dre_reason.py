@@ -59,11 +59,19 @@ def evidence_brief(ep, obs):
     brief = "\n".join(lines)
     base = (ep.get("baseline_text", "") or "")[:1500]
     fin = (ep.get("artifact_text", "") or "")[:3000]
+    # P0-C provenance warning on the final artifact: how much of it was copied/transferred from the AI. A
+    # transferred passage is NOT, on its own, evidence of the learner's authorship or understanding.
+    _tva = next((o for o in obs if o.get("observation_id") == "OBS.TRANSCRIPTION_VS_AUTHORSHIP"), {})
+    _tf = _tva.get("transfer_fraction")
+    _fin_note = ("" if _tf is None else
+                 f" — PROVENANCE: ~{_tf:.0%} of inserted characters were copy-pasted/transferred from the AI, "
+                 "so passages here are NOT by themselves evidence of the learner's authorship or understanding; "
+                 "credit conceptual mastery only with separate evidence the learner understood it")
     return (f"EPISODE: {ep['episode_name']} · learner {ep['author_label']} · provider(s) {ep['providers']}\n\n"
             f"{brief}\n\n"
             f"LEARNER PROMPTS (verbatim):\n{ptexts}\n\n"
             f"PRE-EXISTING DOCUMENT (baseline, before the session):\n{base}\n\n"
-            f"FINAL DOCUMENT (learner artifact after the session):\n{fin}\n\n"
+            f"FINAL DOCUMENT (the document's end state{_fin_note}):\n{fin}\n\n"
             f"CAPTURE LIMITATION: {ep['capture_gaps']['note']}")
 
 SYS = (
@@ -77,6 +85,13 @@ SYS = (
  "- Evidence discipline: copy != understanding; exposure != comprehension; temporal sequence != causation; "
  "AI assistance != AI substitution. Missing/incomplete evidence stays uncertain — never convert a capture gap "
  "into certainty in either direction. Each observation has ONE primary construct home; do not double-count it.\n"
+ "- PROVENANCE GATE (critical): when the evidence for a construct is a document passage or the final artifact, "
+ "check OBS.TRANSCRIPTION_VS_AUTHORSHIP and any COPY/PASTE/TRANSFER signal first. Do NOT award JDG.STRONG or "
+ "'high' confidence for conceptual mastery, schema formation or understanding on the basis of a passage that "
+ "was copied or transferred from the AI. A transferred artifact can show engagement or selection, but "
+ "independent mastery needs SEPARATE evidence the learner understood it (re-expression in their own words, a "
+ "correction, a probing question, or a decision going beyond the copied content). A high transfer fraction is a "
+ "strong confound that caps the judgement — name it in 'confounds'.\n"
  "- No forced score. Judge only where evidence is genuinely adequate. Give a one-line basis for EVERY coverage state.\n"
  "- SELECTIVITY: in a single naturalistic episode, EXPECT the majority of constructs to be "
  "COV.NO_OPPORTUNITY or COV.NOT_RELEVANT. Only use COV.RELEVANT_FOUND when concrete provenance evidence "
