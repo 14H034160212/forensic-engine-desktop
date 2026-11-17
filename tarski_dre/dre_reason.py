@@ -112,7 +112,18 @@ def reason_domain(dom, constructs, brief):
             '"evidence":"which observations/prompt-refs support this","confounds":"alternatives / capture limits or null"}]}')
     out = _chat(SYS, user)
     j = _json(out)
-    return j or {"domain_relevance": "(parse failed)", "constructs": [], "_raw": out[:400]}
+    if not j:
+        return {"domain_relevance": "(parse failed)", "constructs": [], "_raw": out[:400]}
+    # P1-B deterministic consistency: ONLY COV.RELEVANT_FOUND may carry a judgement/confidence. The model
+    # sometimes attaches a JDG to an INSUFFICIENT / NO_OPPORTUNITY / NOT_RELEVANT construct; void it here so
+    # downstream findings and the report can never read a judgement off missing/thin evidence.
+    for c in j.get("constructs", []):
+        if c.get("coverage") != "COV.RELEVANT_FOUND":
+            if c.get("judgement") not in (None, "null", ""):
+                c["judgement_voided"] = c.get("judgement")  # audit trail of what was removed
+            c["judgement"] = None
+            c["confidence"] = None
+    return j
 
 def synthesise(tax, ep, findings_in_play, brief):
     fl = "\n".join(f"- {f['id']} [{f.get('coverage')}/{f.get('judgement')}] {f.get('basis','')} "
@@ -122,7 +133,14 @@ def synthesise(tax, ep, findings_in_play, brief):
             "Now write the SELECTIVE teacher-facing report. Report only what a thoughtful teacher most "
             "needs to notice — usually 3-6 findings ranked by educational significance, in plain language. "
             "Developmental change may outrank absolute level; avoid turning every mixed signal into a warning; "
-            "do not list the dark taxonomy. Return STRICT JSON:\n"
+            "do not list the dark taxonomy.\n"
+            "GROUNDING RULE (strict): only COV.RELEVANT_FOUND constructs (which carry a JDG judgement above) "
+            "may be reported as a demonstrated capability or as 'strength_to_leverage'. COV.RELEVANT_INSUFFICIENT "
+            "constructs were touched but are too thin to judge — mention them only as 'insufficient evidence to "
+            "assess', never as a strength and never with 'high' confidence. Do NOT upgrade an insufficient or "
+            "no-opportunity construct into a strength; 'strength_to_leverage' must be a COV.RELEVANT_FOUND "
+            "construct or null. A statement of absence (e.g. 'no AI use') requires actual observations, not "
+            "missing telemetry. Return STRICT JSON:\n"
             '{"headline":"<=1 sentence overall impression of THIS episode (not the learner as a person)",'
             '"findings":[{"finding":"plain-language, cite the construct in brackets e.g. [D10.COGNITIVE_LOAD_OFFLOADING]",'
             '"significance":"why a teacher should care now","evidence":"the provenance basis","confidence":"low|moderate|high"}],'
