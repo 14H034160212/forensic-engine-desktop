@@ -46,7 +46,13 @@ def _json(txt):
 
 def evidence_brief(ep, obs):
     proms = next((o for o in obs if o["observation_id"] == "OBS.PROMPTS"), {})
-    ptexts = "\n".join(f"  P{p['seq']}: {p['text'][:400]}" for p in proms.get("prompt_texts", [])[:25])
+    all_prompts = proms.get("prompt_texts", [])
+    # Include EVERY learner prompt, not just the first 25: a later turn must not be excluded merely for
+    # occurring late. Share a character budget across all prompts so a long session shrinks per-prompt text
+    # instead of dropping the tail. Tunable via DRE_PROMPT_BRIEF_CHARS.
+    _budget = int(os.environ.get("DRE_PROMPT_BRIEF_CHARS", "16000"))
+    _per = max(160, _budget // max(1, len(all_prompts)))
+    ptexts = "\n".join(f"  P{p['seq']}: {p['text'][:_per]}" for p in all_prompts)
     lines = ["ANALYTICAL OBSERVATIONS (deterministic, evidence-graded):"]
     for o in obs:
         lines.append(f"- [{o['evidence_grade']}] {o['observation_id']}: {o['text']}")
@@ -129,6 +135,22 @@ def run(tax, ep, obs, outdir, progress=None):
             try: progress(stage, done, total, note)
             except Exception: pass
     os.makedirs(outdir, exist_ok=True)
+    # P0 admission gate (deterministic, before any LLM work): refuse to produce a learning assessment when
+    # the input carries no recognised Tarski Telemetry events. Prevents fabricating "no activity / no AI use"
+    # claims from an unparsable or wrong-schema file (e.g. syntactically valid JSONL that is not native TT).
+    _KNOWN_KINDS = {"SESSION_START", "DOCUMENT_BASELINE", "DOCUMENT_FINAL_TEXT", "AI_PROMPT", "AI_RESPONSE",
+                    "AI_RESPONSE_AMENDED", "AI_MESSAGE_OBSERVED", "AI_RESPONSE_STARTED", "DOC_INSERT",
+                    "DOC_EDIT", "DOC_DELETE", "DOC_REWRITE", "DOC_WHITESPACE_CHANGE", "COPY", "PASTE",
+                    "TRANSFER_EVIDENCE", "TRANSFER_EXACT", "TRANSFER_NEAR", "SOURCE_SEGMENT_EXPOSURE",
+                    "EXPOSURE_SUMMARY", "CAPTURE_LIMITATION", "CONNECTOR_GAP_START"}
+    _recognised = sum(c for k, c in ep.get("kinds", {}).items() if k in _KNOWN_KINDS)
+    if _recognised == 0:
+        raise ValueError(
+            "UNSUPPORTED_SCHEMA / ZERO_EVENTS: no recognised Tarski Telemetry events in the input "
+            f"({ep.get('n_events', 0)} records parsed, 0 with a known TT event kind). Refusing to generate a "
+            "teacher/student assessment: a learning judgement requires actual recorded activity, and an absence "
+            "claim requires real observations, not missing/unreadable telemetry. Check the file is a native "
+            "Tarski Telemetry provenance log.")
     brief = evidence_brief(ep, obs)
     # Evidence selection: on a large Episode the single global brief truncates most of the learner's
     # text. When enabled, build a focused, budgeted brief PER DOMAIN instead (keeps the learner's own
