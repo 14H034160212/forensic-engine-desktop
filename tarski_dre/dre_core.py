@@ -245,7 +245,10 @@ def derive_observations(ep):
     add("OBS.SESSION_SHAPE", "DERIVED",
         f"Self-directed session by {ep['author_label']}. {len(ep['ai_turns'])} AI interaction events "
         f"({sum(1 for t in ep['ai_turns'] if t['role']=='prompt')} prompts, "
-        f"{sum(1 for t in ep['ai_turns'] if t['role']=='response')} responses) with provider(s) "
+        f"{sum(1 for t in ep['ai_turns'] if t['role']=='response')} responses [raw kinds: "
+        f"AI_RESPONSE {ep['kinds'].get('AI_RESPONSE',0)} + AI_RESPONSE_AMENDED {ep['kinds'].get('AI_RESPONSE_AMENDED',0)} "
+        f"+ AI_MESSAGE_OBSERVED {ep['kinds'].get('AI_MESSAGE_OBSERVED',0)}; counted once per distinct message, "
+        f"not independent replies]) with provider(s) "
         f"{', '.join(ep['providers']) or 'n/a'}; {len(ep['doc_inserts'])} document inserts, "
         f"{ep['doc_edits']} edits. Working document: "
         f"{', '.join(b['doc'] for b in ep['baselines']) or 'n/a'}.",
@@ -268,32 +271,48 @@ def derive_observations(ep):
     # O3 — reading / exposure to AI output
     ex = ep["exposure"]
     add("OBS.AI_OUTPUT_EXPOSURE", "DERIVED",
-        f"AI/source content was on screen across {ex['segments']} exposed segments (~{ex['approx_read_seconds_capped']}s "
-        f"capped visible time; providers: {ex['providers']}). Exposure≠comprehension.",
+        f"AI/source content was on screen across {ex['segments']} exposed segments [raw kinds: "
+        f"SOURCE_SEGMENT_EXPOSURE {ep['kinds'].get('SOURCE_SEGMENT_EXPOSURE',0)} + "
+        f"EXPOSURE_SUMMARY {ep['kinds'].get('EXPOSURE_SUMMARY',0)}; a summary is not an extra segment] "
+        f"(~{ex['approx_read_seconds_capped']}s capped visible time; providers: {ex['providers']}). "
+        f"Exposure≠comprehension.",
         pointers=["SOURCE_SEGMENT_EXPOSURE"], **{k: ex[k] for k in ('segments','approx_read_seconds_capped','providers')})
 
     # O4 — prompting behaviour (texts preserved for the reasoning layer)
     proms = [t for t in ep["ai_turns"] if t["role"] == "prompt" and t.get("text")]
+    _lens = [p['chars'] for p in proms]
+    _ld = _lens[:12]
     add("OBS.PROMPTS", "OBSERVED",
-        f"{len(proms)} learner prompts captured with full text (lengths "
-        f"{[p['chars'] for p in proms][:12]}). Texts preserved for capability reasoning.",
-        pointers=[p["event_id"] for p in proms][:40],
+        f"{len(proms)} learner prompts captured with full text (first {len(_ld)} lengths {_ld}"
+        + (f" … display truncated; all {len(proms)} texts preserved" if len(_lens) > 12 else "")
+        + "). Texts preserved for capability reasoning.",
+        pointers=[p["event_id"] for p in proms],
+        pointers_total=len(proms),
         prompt_texts=[{"seq": p["seq"], "chars": p["chars"], "text": p["text"]} for p in proms])
 
     # O5 — capture gaps preserved
     g = ep["capture_gaps"]
-    add("OBS.CAPTURE_GAPS", "OBSERVED",
-        f"~{g['responses_started_not_fully_captured']} AI responses began but were not captured in full "
-        f"({g['response_started_events']} started vs {g['response_events']} fully captured); "
-        f"{g['capture_limitation_events']} explicit capture-limitation events. Preserved as missing "
-        f"evidence; not reconstructed.",
-        pointers=["AI_RESPONSE_STARTED", "CAPTURE_LIMITATION"],
-        capture_limitations="Reasoning over these turns must preserve uncertainty.")
+    _gap = g['responses_started_not_fully_captured']
+    if _gap or g['capture_limitation_events']:
+        add("OBS.CAPTURE_GAPS", "OBSERVED",
+            f"~{_gap} AI responses began but were not captured in full "
+            f"({g['response_started_events']} started vs {g['response_events']} fully captured); "
+            f"{g['capture_limitation_events']} explicit capture-limitation events. Preserved as missing "
+            f"evidence; not reconstructed.",
+            pointers=["AI_RESPONSE_STARTED", "CAPTURE_LIMITATION"],
+            capture_limitations="Reasoning over these turns must preserve uncertainty.")
+    else:
+        add("OBS.CAPTURE_GAPS", "OBSERVED",
+            f"No capture gaps for this episode: all {g['response_events']} AI responses fully captured, no "
+            f"capture-limitation events. Do NOT add a generic missing-reply caveat for this episode.",
+            pointers=[])
 
     # O6 — revision / execution activity
     add("OBS.REVISION_ACTIVITY", "DERIVED",
         f"{ep['doc_edits']} edit events and {ep['doc_whitespace']} whitespace changes beyond initial "
-        f"insertion; {ep['copies']} copies, {ep['pastes']} pastes, {ep['transfers']} transfer-evidence links.",
+        f"insertion; {ep['copies']} copies, {ep['pastes']} pastes, {ep['transfers']} transfer links [raw kinds: "
+        f"TRANSFER_EVIDENCE {ep['kinds'].get('TRANSFER_EVIDENCE',0)} + TRANSFER_EXACT {ep['kinds'].get('TRANSFER_EXACT',0)} "
+        f"+ TRANSFER_NEAR {ep['kinds'].get('TRANSFER_NEAR',0)}].",
         pointers=["DOC_EDIT", "COPY", "PASTE", "TRANSFER_EVIDENCE"])
     return obs
 
