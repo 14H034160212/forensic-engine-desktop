@@ -321,6 +321,17 @@ def load_all(events_path, taxonomy_md, artifact_docx=None):
     """events_path may be a Recorder Episode FOLDER, a .jsonl provenance log, or a manifest .json."""
     tax = load_taxonomy(taxonomy_md)
     events = load_events(events_path)
+    # Optional input adapter: if the file is compact Ingester output (records keyed by `action`, no recorder
+    # `kind`), relabel it into the DRE's event vocabulary — honestly marked DERIVED, no fabricated chain.
+    # Never fires on a real TT episode (which carries `kind`). Disable with DRE_INGEST_ADAPTER=off.
+    if os.environ.get("DRE_INGEST_ADAPTER", "auto").strip().lower() != "off":
+        try:
+            import ingester_adapter
+            if ingester_adapter.looks_like_ingester(events):
+                events = ingester_adapter.adapt(events)
+                print(f"  [ingester adapter: {len(events)-1} derived actions mapped to DRE events]", flush=True)
+        except Exception as _e:
+            print(f"  [ingester adapter skipped: {_e}]", flush=True)
     ep = ingest(events)
     # Independently re-verify the provenance hash chain (only meaningful when the log carries hashes).
     if events and events[0].get("event_hash"):
