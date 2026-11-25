@@ -257,7 +257,11 @@ def derive_observations(ep):
     # O2 — transcription vs original authorship (the key AI-era signal)
     ins = ep["doc_inserts"]
     tot = sum(i["chars"] or 0 for i in ins)
-    transfer = sum((i["chars"] or 0) for i in ins if "TRANSFER" in (i["classification"] or "").upper())
+    # A DOC_INSERT counts as transferred only when its classification IS a transfer verdict
+    # (TRANSFER_CORRELATED / TRANSFER_EXACT / ...). The old `"TRANSFER" in cl` substring test also
+    # matched NO_CORRELATED_TRANSFER — the recorder's token for "no transfer link" — and so inflated
+    # the transfer fraction by counting un-transferred inserts. startswith("TRANSFER") excludes it.
+    transfer = sum((i["chars"] or 0) for i in ins if (i["classification"] or "").upper().startswith("TRANSFER"))
     original = tot - transfer
     frac = (transfer / tot) if tot else 0.0
     add("OBS.TRANSCRIPTION_VS_AUTHORSHIP", "DERIVED",
